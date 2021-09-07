@@ -1,0 +1,3 @@
+.. automodule:: homelette.organization
+   :members:
+

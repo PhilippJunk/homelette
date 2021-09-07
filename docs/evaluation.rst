@@ -1,0 +1,2 @@
+.. automodule:: homelette.evaluation
+   :members:

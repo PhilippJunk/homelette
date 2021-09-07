@@ -1,0 +1,14 @@
+include docs/*.rst
+include docs/extensions/*.rst
+include docs/make.bat
+include docs/Makefile
+
+include docker/*
+include docker/template_container/*
+
+include examples/*.ipynb
+include examples/data/*
+include examples/data/single/*
+include examples/data/complex/*
+
+include logo/logo.png

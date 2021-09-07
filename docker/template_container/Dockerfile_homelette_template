@@ -1,0 +1,78 @@
+# Dockerfile for building homelette container
+# use with
+# docker build --no-cache -f Dockerfile_homelette_template -t philippjunk/homelette_template:latest -t philippjunk/homelette_template:1.0 -
+
+FROM registry.scicore.unibas.ch/schwede/promod3:3.2.0-OST2.2.0-focal
+
+ARG SRC_FOLDER="/usr/local/src/"
+ARG QMEAN_VERSION="4.2.0"
+ARG ALTMOD_VERSION="1.0"
+ARG HOMELETTE_VERSION="1.0"
+
+ENV MODELLER_VERSION="10.1"
+
+# install qmean
+RUN cd ${SRC_FOLDER} && \
+	wget -O qmean-${QMEAN_VERSION}.tar.gz -nc https://git.scicore.unibas.ch/schwede/QMEAN/-/archive/${QMEAN_VERSION}/QMEAN-${QMEAN_VERSION}.tar.gz && \
+	mkdir -p ${SRC_FOLDER}/qmean-${QMEAN_VERSION}/build && \
+	tar -xf qmean-${QMEAN_VERSION}.tar.gz -C ${SRC_FOLDER}/qmean-${QMEAN_VERSION} --strip-components=1 && \
+	cd ${SRC_FOLDER}/qmean-${QMEAN_VERSION}/build && \
+	cmake .. -DOST_ROOT=/usr/local && \ 
+	make && \ 
+	make check && \ 
+	make install 
+
+# install modeller and soap
+RUN cd ${SRC_FOLDER} && \
+	wget -O modeller-${MODELLER_VERSION}.deb -nc https://salilab.org/modeller/${MODELLER_VERSION}/modeller_${MODELLER_VERSION}-1_amd64.deb && \
+	dpkg -i modeller-${MODELLER_VERSION}.deb && \
+	rm modeller-${MODELLER_VERSION}.deb && \
+	wget -O soap_protein_od.hdf5 -nc https://salilab.org/SOAP/soap_protein_od.hdf5 && \
+	mv soap_protein_od.hdf5 /usr/lib/modeller${MODELLER_VERSION}/modlib/
+
+# install altmod
+RUN wget -O ${SRC_FOLDER}/altmod-${ALTMOD_VERSION}.tar.gz -nc https://github.com/pymodproject/altmod/archive/refs/tags/${ALTMOD_VERSION}.tar.gz && \
+	cd ${SRC_FOLDER} && \
+	mkdir -p altmod-${ALTMOD_VERSION} && \
+	tar -xf altmod-${ALTMOD_VERSION}.tar.gz -C ${SRC_FOLDER}/altmod-${ALTMOD_VERSION} --strip-components=1 && \
+	rm altmod-${ALTMOD_VERSION}.tar.gz
+ENV PYTHONPATH="${SRC_FOLDER}/altmod-${ALTMOD_VERSION}/:${PYTHONPATH}"
+
+# install mol probity
+RUN apt-get update && apt-get install -y git subversion python libgl1-mesa-glx && \ 
+	rm -rf /var/lib/apt/lists/* && \
+	mkdir -p ${SRC_FOLDER}/MolProbity && \
+	cd ${SRC_FOLDER}/MolProbity && \
+	svn --quiet --non-interactive --trust-server-cert export https://github.com/rlabduke/MolProbity.git/trunk/install_via_bootstrap.sh && \
+	chmod u+x install_via_bootstrap.sh && \
+	./install_via_bootstrap.sh 4 && \
+	ln -s ${SRC_FOLDER}/MolProbity/build/bin/phenix.molprobity /usr/local/bin/phenix.molprobity 
+
+# install homelette
+# TODO get tagged version fro github
+# RUN wget -O ${SRC_FOLDER/homelette-{HOMELETTE_VERSION}.tar.gz -nc https://github.com/philippjunk/homelette/archive/refs/tags/${HOMELETTE_VERSION}.tar.gz && \
+# 	cd ${SCR_FOLDER} && \
+# 	mkdir -p homelette-${HOMELETTE_VERSION} && \
+# 	tar -xf homelette-$HOMELETTE_VERSION}.tar.gz -C ${SRC_FOLDER}/homelette-${HOMELETTE_VERSION} --strip-components=1 && \
+# 	rm homelette-${HOMELETTE_VERSION}.tar.gz
+# ENV PYTHONPATH="${SRC_FOLDER/homelette-${HOMELETTE_VERSION}/:${PYTHONPATH}"
+
+COPY homology ${SRC_FOLDER}/homology/
+ENV PYTHONPATH="${SRC_FOLDER}/homology/:${PYTHONPATH}"
+
+# install jupyter lab 
+RUN apt-get update && apt-get install -y python3-pip && \
+	rm -rf /var/lib/apt/lists/* && \
+	python3 -m pip install session_info && \
+	python3 -m pip install jupyterlab && \
+	python3 -m pip install seaborn
+
+
+ENV TUTORIALS="${SRC_FOLDER}/homology/examples/"
+# TODO
+# ENV TUTORIALS="${SRC_FOLDER}/homelette-${HOMELETTE_VERSION}/examples/"
+WORKDIR /home
+
+# adapt entrypoint and cmd
+ENTRYPOINT []
+CMD ["bash"] 
