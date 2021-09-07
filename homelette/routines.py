@@ -853,44 +853,46 @@ class Routine_promod3(Routine):
 # Complex Modelling
 
 # define custom modelling classes
-class _AutomodelComplex(modeller.automodel.automodel):
-    '''
-    Modelling class adapted for complex modelling.
-
-    Based on the automodel class from modeller.
-
-    Multi-chain models are assigned different chain identifiers for the
-    individual chains, with each chain starting at residue 1.
-    '''
-    def special_patches(self, aln):
+if _IMPORTS['modeller'] == True:
+    class _AutomodelComplex(modeller.automodel.automodel):
         '''
-        Enforce custom renaming of chains and renumbering of residues.
+        Modelling class adapted for complex modelling.
+
+        Based on the automodel class from modeller.
+
+        Multi-chain models are assigned different chain identifiers for the
+        individual chains, with each chain starting at residue 1.
         '''
-        # see https://salilab.org/modeller/manual/node30.html
-        segment_ids = list(string.ascii_uppercase)
-        renumber_residues = [1] * len(segment_ids)
-        self.rename_segments(segment_ids=segment_ids,
-                             renumber_residues=renumber_residues)
+        def special_patches(self, aln):
+            '''
+            Enforce custom renaming of chains and renumbering of residues.
+            '''
+            # see https://salilab.org/modeller/manual/node30.html
+            segment_ids = list(string.ascii_uppercase)
+            renumber_residues = [1] * len(segment_ids)
+            self.rename_segments(segment_ids=segment_ids,
+                                 renumber_residues=renumber_residues)
 
 
-class _AltmodComplex(altmod.Automodel_statistical_potential):
-    '''
-    Modelling class adapted for complex modelling.
-
-    Based on the Automodel_statistical_potential class from altmod.
-
-    Multi-chain models are assigned different chain identifiers for the
-    individual chains, with each chain starting at residue 1.
-    '''
-    def special_patches(self, aln):
+if _IMPORTS['altmod'] == True:
+    class _AltmodComplex(altmod.Automodel_statistical_potential):
         '''
-        Enforce custom renaming of chains and renumbering of residues.
+        Modelling class adapted for complex modelling.
+
+        Based on the Automodel_statistical_potential class from altmod.
+
+        Multi-chain models are assigned different chain identifiers for the
+        individual chains, with each chain starting at residue 1.
         '''
-        # see https://salilab.org/modeller/manual/node30.html
-        segment_ids = list(string.ascii_uppercase)
-        renumber_residues = [1] * len(segment_ids)
-        self.rename_segments(segment_ids=segment_ids,
-                             renumber_residues=renumber_residues)
+        def special_patches(self, aln):
+            '''
+            Enforce custom renaming of chains and renumbering of residues.
+            '''
+            # see https://salilab.org/modeller/manual/node30.html
+            segment_ids = list(string.ascii_uppercase)
+            renumber_residues = [1] * len(segment_ids)
+            self.rename_segments(segment_ids=segment_ids,
+                                 renumber_residues=renumber_residues)
 
 
 class Routine_complex_automodel_default(Routine_modeller):
