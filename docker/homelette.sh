@@ -131,7 +131,7 @@ wrapper_jlab () {
 	done
 
 	# write output and open URL
-	echo "http://127.0.0.1:${PORT}/lab?token=${token}" # TODO
+	echo -e "\nOpen jupyter lab in your browser:\nhttp://127.0.0.1:${PORT}/lab?token=${token}\n\nTo stop this container from running, shut down jupyter lab or press cntrl-C in this terminal."
 	xdg-open "http://127.0.0.1:${PORT}/lab?token=${token}"
 }
 
