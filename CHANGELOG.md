@@ -5,7 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Added
-- Started using a CHANGELOG
+- Started using a CHANGELOG.
+
+### Changed
+- Improved documentation for PyPI.
 
 ### Fixed
 - Fixed a typo in `docker/template_container/Dockerfile_homelette_template`.
