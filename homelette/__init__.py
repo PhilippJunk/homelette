@@ -34,7 +34,7 @@ extension
 '''
 
 __all__ = ['Task', 'Model', 'Alignment', 'routines', 'evaluation']
-__version__ = '1.0'
+__version__ = '1.1'
 __author__ = 'Philipp Junk, Christina Kiel'
 __email__ = 'philipp.junk@ucdconnect.ie'
 __maintainer__ = 'Philipp Junk'
