@@ -1,6 +1,6 @@
 # Dockerfile for building homelette container
 # use with
-# docker build --no-cache -f Dockerfile_homelette_template -t philippjunk/homelette_template:latest -t philippjunk/homelette_template:1.0 -
+# docker build --no-cache -t philippjunk/homelette_template:latest -t philippjunk/homelette_template:1.0 - < Dockerfile_homelette_template
 
 FROM registry.scicore.unibas.ch/schwede/promod3:3.2.0-OST2.2.0-focal
 
@@ -50,7 +50,7 @@ RUN apt-get update && apt-get install -y git subversion python libgl1-mesa-glx &
 
 # install homelette
 RUN wget -O ${SRC_FOLDER/homelette-{HOMELETTE_VERSION}.tar.gz -nc https://github.com/philippjunk/homelette/archive/refs/tags/${HOMELETTE_VERSION}.tar.gz && \
- 	cd ${SCR_FOLDER} && \
+ 	cd ${SRC_FOLDER} && \
  	mkdir -p homelette-${HOMELETTE_VERSION} && \
  	tar -xf homelette-$HOMELETTE_VERSION}.tar.gz -C ${SRC_FOLDER}/homelette-${HOMELETTE_VERSION} --strip-components=1 && \
  	rm homelette-${HOMELETTE_VERSION}.tar.gz
