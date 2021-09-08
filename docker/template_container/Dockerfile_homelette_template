@@ -49,16 +49,12 @@ RUN apt-get update && apt-get install -y git subversion python libgl1-mesa-glx &
 	ln -s ${SRC_FOLDER}/MolProbity/build/bin/phenix.molprobity /usr/local/bin/phenix.molprobity 
 
 # install homelette
-# TODO get tagged version fro github
-# RUN wget -O ${SRC_FOLDER/homelette-{HOMELETTE_VERSION}.tar.gz -nc https://github.com/philippjunk/homelette/archive/refs/tags/${HOMELETTE_VERSION}.tar.gz && \
-# 	cd ${SCR_FOLDER} && \
-# 	mkdir -p homelette-${HOMELETTE_VERSION} && \
-# 	tar -xf homelette-$HOMELETTE_VERSION}.tar.gz -C ${SRC_FOLDER}/homelette-${HOMELETTE_VERSION} --strip-components=1 && \
-# 	rm homelette-${HOMELETTE_VERSION}.tar.gz
-# ENV PYTHONPATH="${SRC_FOLDER/homelette-${HOMELETTE_VERSION}/:${PYTHONPATH}"
-
-COPY homology ${SRC_FOLDER}/homology/
-ENV PYTHONPATH="${SRC_FOLDER}/homology/:${PYTHONPATH}"
+RUN wget -O ${SRC_FOLDER/homelette-{HOMELETTE_VERSION}.tar.gz -nc https://github.com/philippjunk/homelette/archive/refs/tags/${HOMELETTE_VERSION}.tar.gz && \
+ 	cd ${SCR_FOLDER} && \
+ 	mkdir -p homelette-${HOMELETTE_VERSION} && \
+ 	tar -xf homelette-$HOMELETTE_VERSION}.tar.gz -C ${SRC_FOLDER}/homelette-${HOMELETTE_VERSION} --strip-components=1 && \
+ 	rm homelette-${HOMELETTE_VERSION}.tar.gz
+ ENV PYTHONPATH="${SRC_FOLDER/homelette-${HOMELETTE_VERSION}/:${PYTHONPATH}"
 
 # install jupyter lab 
 RUN apt-get update && apt-get install -y python3-pip && \
@@ -68,11 +64,9 @@ RUN apt-get update && apt-get install -y python3-pip && \
 	python3 -m pip install seaborn
 
 
-ENV TUTORIALS="${SRC_FOLDER}/homology/examples/"
-# TODO
-# ENV TUTORIALS="${SRC_FOLDER}/homelette-${HOMELETTE_VERSION}/examples/"
+ENV TUTORIALS="${SRC_FOLDER}/homelette-${HOMELETTE_VERSION}/examples/"
 WORKDIR /home
 
 # adapt entrypoint and cmd
 ENTRYPOINT []
-CMD ["bash"] 
+CMD ["/bin/bash"] 
