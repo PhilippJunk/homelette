@@ -1,3 +1,5 @@
+include CHANGELOG.md
+
 include docs/*.rst
 include docs/extensions/*.rst
 include docs/make.bat
