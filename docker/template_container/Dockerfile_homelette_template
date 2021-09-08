@@ -49,12 +49,12 @@ RUN apt-get update && apt-get install -y git subversion python libgl1-mesa-glx &
 	ln -s ${SRC_FOLDER}/MolProbity/build/bin/phenix.molprobity /usr/local/bin/phenix.molprobity 
 
 # install homelette
-RUN wget -O ${SRC_FOLDER/homelette-{HOMELETTE_VERSION}.tar.gz -nc https://github.com/philippjunk/homelette/archive/refs/tags/${HOMELETTE_VERSION}.tar.gz && \
+RUN wget -O ${SRC_FOLDER}/homelette-${HOMELETTE_VERSION}.tar.gz -nc https://github.com/philippjunk/homelette/archive/refs/tags/${HOMELETTE_VERSION}.tar.gz && \
  	cd ${SRC_FOLDER} && \
  	mkdir -p homelette-${HOMELETTE_VERSION} && \
- 	tar -xf homelette-$HOMELETTE_VERSION}.tar.gz -C ${SRC_FOLDER}/homelette-${HOMELETTE_VERSION} --strip-components=1 && \
+ 	tar -xf homelette-${HOMELETTE_VERSION}.tar.gz -C ${SRC_FOLDER}/homelette-${HOMELETTE_VERSION} --strip-components=1 && \
  	rm homelette-${HOMELETTE_VERSION}.tar.gz
- ENV PYTHONPATH="${SRC_FOLDER/homelette-${HOMELETTE_VERSION}/:${PYTHONPATH}"
+ ENV PYTHONPATH="${SRC_FOLDER}/homelette-${HOMELETTE_VERSION}/:${PYTHONPATH}"
 
 # install jupyter lab 
 RUN apt-get update && apt-get install -y python3-pip && \
