@@ -72,7 +72,8 @@ autodoc_default_options = {
     'member-order': 'bysource',
 }
 autoclass_content = 'class'
-autodoc_mock_imports = ['altmod', 'modeller', 'ost', 'promod3', 'qmean']
+autodoc_mock_imports = ['altmod', 'modeller', 'ost', 'promod3', 'qmean',
+                        'pandas']
 
 # -- Extension configuration: napoleon ---------------------------------------
 napoleon_use_ivar = True
