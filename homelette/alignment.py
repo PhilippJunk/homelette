@@ -472,7 +472,7 @@ class Alignment():
         '''
         return self.sequences[sequence_name]
 
-    def select_sequences(self, sequence_names: [tuple, list]) -> None:
+    def select_sequences(self, sequence_names: typing.Iterable) -> None:
         '''
         Select sequences to remain in the alignment by sequence name
 

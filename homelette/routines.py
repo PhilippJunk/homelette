@@ -624,7 +624,7 @@ class Routine_altmod_default(Routine_modeller):
     refinement.
     '''
     def __init__(self, alignment: typing.Type['Alignment'], target: str,
-                 templates: [list, tuple], tag: str, n_threads: int = 1,
+                 templates: typing.Iterable, tag: str, n_threads: int = 1,
                  n_models: int = 1) -> None:
         # check dependencies
         # (modeller is already checked in Routine_modeller.__init__)
@@ -733,7 +733,7 @@ class Routine_altmod_slow(Routine_modeller):
     refinement.
     '''
     def __init__(self, alignment: typing.Type['Alignment'], target: str,
-                 templates: [list, tuple], tag: str, n_threads: int = 1,
+                 templates: typing.Iterable, tag: str, n_threads: int = 1,
                  n_models: int = 1) -> None:
         # check dependencies
         # (modeller is already checked in Routine_modeller.__init__)
@@ -967,7 +967,7 @@ class Routine_complex_automodel_default(Routine_modeller):
     +-----------------------+-------------------------------------------+
     '''
     def __init__(self, alignment: typing.Type['Alignment'], target: str,
-                 templates: [list, tuple], tag: str, n_threads: int = 1,
+                 templates: typing.Iterable, tag: str, n_threads: int = 1,
                  n_models: int = 1) -> None:
         # init parameters
         Routine_modeller.__init__(self, alignment, target, templates, tag)

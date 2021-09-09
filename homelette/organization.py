@@ -157,7 +157,7 @@ class Task():
 
     def execute_routine(self, tag: str, routine:
                         typing.Type['routines.Routine'], templates:
-                        [tuple, list], template_location: str = '.',
+                        typing.Iterable, template_location: str = '.',
                         **kwargs) -> None:
         '''
         Generates homology models using a specified modelling routine
