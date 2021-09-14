@@ -63,7 +63,11 @@ html_theme_options = {
 # -- Options for LaTex output ------------------------------------------------
 
 latex_elements = {
-        'preamble': r'\setcounter{tocdepth}{1}'
+        'preamble': r'''
+\setcounter{tocdepth}{1}
+
+\renewcommand{\hyperref}[2][]{#2}
+'''
     }
 
 

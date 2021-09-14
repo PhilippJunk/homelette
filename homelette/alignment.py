@@ -672,8 +672,8 @@ class Alignment():
 
         .. math::
 
-             \\text{seq_id} = \\frac{\\text{matches}}
-             {\\text{length}(\\text{sequence}_1)}
+             \\text{seqid} = \\frac{\\text{matches}}
+             {\\text{length}(\\text{sequence1})}
 
         Examples
         --------
@@ -753,8 +753,8 @@ class Alignment():
 
         .. math::
 
-             \\text{seq_id} = \\frac{\\text{matches}}
-             {\\text{length}(\\text{sequence}_1)}
+             \\text{seqid} = \\frac{\\text{matches}}
+             {\\text{length}(\\text{sequence1})}
         '''
         output = {'sequence_1': [], 'sequence_2': [], 'identity': []}
         # iterate over all pairs of sequences
@@ -793,8 +793,8 @@ class Alignment():
 
         .. math::
 
-             \\text{seq_id} = \\frac{\\text{matches}}
-             {\\text{length}(\\text{sequence}_1)}
+             \\text{seqid} = \\frac{\\text{matches}}
+             {\\text{length}(\\text{sequence1})}
         '''
         output = {'sequence_1': [], 'sequence_2': [], 'identity': []}
         for sequence_name_2 in self.sequences.keys():
