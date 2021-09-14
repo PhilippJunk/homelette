@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Improved documentation for PyPI.
+- Updated references in tutorials.
 
 ### Fixed
 - Fixed a typo in `docker/template_container/Dockerfile_homelette_template`.
