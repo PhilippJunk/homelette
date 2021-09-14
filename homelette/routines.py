@@ -853,7 +853,7 @@ class Routine_promod3(Routine):
 # Complex Modelling
 
 # define custom modelling classes
-if _IMPORTS['modeller'] == True:
+if _IMPORTS['modeller'] is True:
     class _AutomodelComplex(modeller.automodel.automodel):
         '''
         Modelling class adapted for complex modelling.
@@ -874,7 +874,7 @@ if _IMPORTS['modeller'] == True:
                                  renumber_residues=renumber_residues)
 
 
-if _IMPORTS['altmod'] == True:
+if _IMPORTS['altmod'] is True:
     class _AltmodComplex(altmod.Automodel_statistical_potential):
         '''
         Modelling class adapted for complex modelling.
@@ -1072,7 +1072,7 @@ class Routine_complex_automodel_slow(Routine_modeller):
                  n_models: int = 1) -> None:
         # init parameters
         Routine_modeller.__init__(self, alignment, target, templates, tag)
-        self.routine = 'complex_automodel_default'
+        self.routine = 'complex_automodel_slow'
         # modelling parameters
         self.n_threads = n_threads
         self.n_models = n_models
@@ -1289,7 +1289,7 @@ class Routine_complex_altmod_slow(Routine_modeller):
         self._check_dependencies(dependencies)
         # init
         Routine_modeller.__init__(self, alignment, target, templates, tag)
-        self.routine = 'complex_altmod_default'
+        self.routine = 'complex_altmod_slow'
         # modelling parameters
         self.n_threads = n_threads
         self.n_models = n_models
