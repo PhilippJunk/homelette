@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+
+## [1.2] - 2021-09-15
 ### Added
 - Started using a CHANGELOG.
 - Added support for PDF on readthedocs page.
@@ -38,6 +40,7 @@ to a GitHub tag.
 ### Added
 - Initial release of homelette
 
-[Unreleased]: https://github.com/philippjunk/homelette/compare/1.1...HEAD
+[Unreleased]: https://github.com/philippjunk/homelette/compare/1.2...HEAD
+[1.2]: https://github.com/philippjunk/homelette/compare/1.1...1.2
 [1.1]: https://github.com/philippjunk/homelette/compare/1.0...1.1
 [1.0]: https://github.com/philippjunk/homelette/releases/tag/1.0
