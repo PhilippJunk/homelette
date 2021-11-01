@@ -1126,9 +1126,7 @@ class AlignmentGenerator(abc.ABC):
 
     def select_templates(self, templates: typing.Iterable):
         '''
-        Make choice from suggested templates.
-
-        Throws an error if suggestion has not been made
+        Select templates from suggested templates.
 
         Raises
         ------
@@ -1136,7 +1134,8 @@ class AlignmentGenerator(abc.ABC):
             Alignment has not been generated yet
         '''  # TODO
         self._check_aln()
-        pass
+        selection = ['target'] + [t for t in templates]
+        self.alignment.select_sequences(selection)
 
     def get_pdb(self, template_name: str, template_sequence: str,
                 output_folder: str):
@@ -1156,6 +1155,8 @@ class AlignmentGenerator(abc.ABC):
         # seequence database or change sequence in alignment if it doesn't
 
         # adjust residue numbers in template pdb
+
+        # annotate sequence in alignment
 
         # save pdb in template folder
 
