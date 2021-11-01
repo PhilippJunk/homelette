@@ -760,10 +760,11 @@ class Alignment():
         # iterate over all pairs of sequences
         for sequence_name_1, sequence_name_2 in itertools.product(
                 self.sequences.keys(), repeat=2):
-            output['sequence_1'].append(sequence_name_1)
-            output['sequence_2'].append(sequence_name_2)
-            output['identity'].append(self.calc_identity(
-                sequence_name_1, sequence_name_2))
+            if not sequence_name_1 == sequence_name_2:
+                output['sequence_1'].append(sequence_name_1)
+                output['sequence_2'].append(sequence_name_2)
+                output['identity'].append(self.calc_identity(
+                    sequence_name_1, sequence_name_2))
         return pd.DataFrame(output)
 
     def calc_identity_target(
@@ -798,10 +799,11 @@ class Alignment():
         '''
         output = {'sequence_1': [], 'sequence_2': [], 'identity': []}
         for sequence_name_2 in self.sequences.keys():
-            output['sequence_1'].append(sequence_name)
-            output['sequence_2'].append(sequence_name_2)
-            output['identity'].append(self.calc_identity(
-                sequence_name, sequence_name_2))
+            if not sequence_name == sequence_name_2:
+                output['sequence_1'].append(sequence_name)
+                output['sequence_2'].append(sequence_name_2)
+                output['identity'].append(self.calc_identity(
+                    sequence_name, sequence_name_2))
         return pd.DataFrame(output)
 
 
