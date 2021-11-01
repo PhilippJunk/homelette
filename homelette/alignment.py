@@ -1089,11 +1089,16 @@ class AlignmentGenerator(abc.ABC):
                 'Please generate a suggestion first using the "get_suggestion"'
                 'method.')  # TODO get_suggestion still the name I want to use?
 
-    def show_suggestion(self):
+    def show_suggestion(self) -> typing.Type['pd.DataFrame']:
         '''
-        Show suggestion of potential templates as well as some statistics.
+        Shows which templates have been suggested by the AlignmentGenerator, as
+        well as some useful statistics (sequence identity, coverage).
 
-        Throws an error if suggestion has not been make
+        Returns
+        -------
+        suggestion : pd.DataFrame
+            DataFrame with calculates sequence identity and sequence coverage
+            for target
 
         Raises
         ------
@@ -1101,9 +1106,23 @@ class AlignmentGenerator(abc.ABC):
             Alignment has not been generated yet
         '''
         self._check_aln()
-        # TODO show coverage, seqid, resolution, method, ranking based on
-        # coverage and seqid
-        pass
+
+        df_coverage = self.alignment.calc_coverage_target(self.target)
+        df_identity = self.alignment.calc_identity_target(self.target)
+        # TODO maybe get method for PDB structure? and resolution?
+        # but that would require multiple web requests, so not really ideal..
+        # TODO maybe propose ranking? (borda) or just sort by seq_id?
+
+        output = (
+            # combine data frame
+            pd.merge(df_coverage, df_identity, on=('sequence_1', 'sequence_2'))
+            # sort values
+            .sort_values(by='identity', ascending=False)
+            # remove column with sequence_1 and rename sequence_2
+            .drop('sequence_1', axis=1)
+            .rename({'sequence_2': 'template'}, axis=1)
+            )
+        return output
 
     def select_templates(self, templates: typing.Iterable):
         '''
