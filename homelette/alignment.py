@@ -29,6 +29,7 @@ Functions and classes present in `homelette.alignment` are listed below:
 __all__ = ['Alignment', 'Sequence', 'assemble_complex_aln']
 
 # Standard library imports
+import abc
 import contextlib
 import itertools
 import re
@@ -872,3 +873,135 @@ def assemble_complex_aln(*args: typing.Type['Alignment'], names:
         sequence = '/'.join(sequence)
         output_aln.sequences[output_name] = Sequence(output_name, sequence)
     return output_aln
+
+
+class AlignmentGenerator(abc.ABC):
+    '''
+    Parent class for the auto-generation of alignments and template selection
+    based on sequence input
+
+    Parameters
+    ----------
+    sequence : str
+        Sequence in 1 letter amino acid code
+    '''
+    def __init__(self, sequence):
+        self.alignment = None
+
+    @abc.abstractmethod
+    def get_suggestion(self):
+        '''
+        Generate suggestion for templates and alignment
+        '''
+        pass
+
+    def _check_aln(self):
+        '''
+        Check if alignment has already been generated, if not raise
+        RuntimeError
+
+        Raises
+        ------
+        RuntimeError
+            alignment has not been generated yet
+        '''
+        if self.alignment is None:
+            raise RuntimeError(
+                'Please generate a suggestion first using the "get_suggestion"'
+                'method.')  # TODO get_suggestion still the name I want to use?
+
+    def show_suggestion(self):
+        '''
+        Show suggestion of potential templates as well as some statistics.
+
+        Throws an error if suggestion has not been make
+
+        Raises
+        ------
+        RuntimeError
+            alignment has not been generated yet
+        '''
+        self._check_aln()
+        # TODO show coverage, seqid, resolution, method, ranking based on
+        # coverage and seqid
+        pass
+
+    def select_templates(self, templates: typing.Iterable):
+        '''
+        Make choice from suggested templates.
+
+        Throws an error if suggestion has not been made
+
+        Raises
+        ------
+        RuntimeError
+            alignment has not been generated yet
+        '''  # TODO
+        self._check_aln()
+        pass
+
+    def get_pdb(self, template_name: str, template_sequence: str,
+                output_folder: str):
+        '''
+        Downloads and processes template from PDB
+
+        Parameters
+        ----------
+        template_name : str
+        template_sequence : str
+        output_folder : str
+        '''  # TODO
+        # TODO consider using sequence object instead of name and seq
+        # download template
+
+        # check whether template has the same sequence as retrieved from the
+        # seequence database or change sequence in alignment if it doesn't
+
+        # adjust residue numbers in template pdb
+
+        # save pdb in template folder
+
+
+class AlignmentGenerator_pdb(AlignmentGenerator):
+    '''
+    Auto-generation of alignments based on a pdbblast search for a target
+    sequence
+
+    Parameters
+    ----------
+    sequence : str
+        Target sequence
+    '''
+    def __init__(self, sequence):
+        # TODO sequence as string or Sequence object?
+        pass
+
+    def get_suggestion(self):
+        '''
+        '''  # TODO
+        pass
+
+
+class AlignmentGenerator_hhblits(AlignmentGenerator):
+    '''
+    '''
+    def __init__(self):
+        pass
+
+    def get_suggestion(self):
+        '''
+        '''  # TODO
+        pass
+
+
+class AlignmentGenerator_hmmer(AlignmentGenerator):
+    '''
+    '''
+    def __init__(self):
+        pass
+
+    def get_suggestion(self):
+        '''
+        '''  # TODO
+        pass
+# TODO maybe implement dependency check for non-python packages?
