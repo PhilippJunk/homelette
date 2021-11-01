@@ -1,0 +1,8 @@
+build
+dist
+docs/Tutorial*.ipynb
+docs/_build
+docs/logo.png
+homelette.egg-info
+homelette/__pycache__
+homelette/extension/__pycache__
