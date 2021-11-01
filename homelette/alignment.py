@@ -806,6 +806,97 @@ class Alignment():
                 sequence_name, sequence_name_2))
         return pd.DataFrame(output)
 
+    def calc_coverage(self, sequence_name_1: str,
+                      sequence_name_2: str) -> float:
+        '''
+        Calculation of coverage of sequence 2 to sequence 1 in the alignment.
+
+        Parameters
+        ----------
+        sequence_name_1, sequence_name_2 : str
+            Sequence pair to calculate coverage for
+
+        Returns
+        -------
+        coverage : float
+            Coverage of sequence 2 to sequence 1
+
+        See Also
+        --------
+        calc_coverage_target
+        calc_pairwise_coverage_all
+
+        Notes
+        -----
+        Coverage in this context means how many of the residues in sequences 1
+        are assigned a residue in sequence 2. This is useful for evaluating
+        potential templates, because a low sequence identity (as implemented in
+        homelette) could be caused either by a lot of residues not being
+        aligned at all, or a lot of residues being aligned but not with
+        identical residues.
+
+        .. math::
+
+            \\text{coverage} = \\frac{\\text{aligned residues}}
+            {\\text{length}(\\text{sequence1})}
+
+        Examples
+        --------
+
+        Gaps and mismatches are not treated equally.
+
+        >>> aln = hm.Alignment(None)
+        >>> aln.sequences = {
+        ...     'seq1': hm.alignment.Sequence('seq1', 'AAAACCCCDDDD'),
+        ...     'seq2': hm.alignment.Sequence('seq2', 'AAAAEEEEDDDD'),
+        ...     'seq3': hm.alignment.Sequence('seq3', 'AAAA----DDDD')
+        ...     }
+        >>> aln.calc_coverage('seq1', 'seq2')
+        100.0
+        >>> aln.calc_coverage('seq1', 'seq3')
+        66.67
+
+        Normalization happens for the length of sequence 1, so the order of
+        sequences matters.
+
+        >>> aln = hm.Alignment(None)
+        >>> aln.sequences = {
+        ...     'seq1': hm.alignment.Sequence('seq1', 'AAAACCCCDDDD'),
+        ...     'seq2': hm.alignment.Sequence('seq3', 'AAAA----DDDD')
+        ...     }
+        >>> aln.calc_coverage('seq1', 'seq2')
+        66.67
+        >>> aln.calc_coverage('seq2', 'seq1')
+        100.0
+        '''
+        def _calc_coverage(sequence_1: typing.Iterable, sequence_2:
+                           typing.Iterable) -> float:
+            '''
+            Helper function for calculating sequence coverage
+
+            coverage = aligned_res / length(sequence_1)
+
+            Parameters
+            ----------
+            sequence_1, sequence_2 : Iterable
+                Sequence string transformed to list
+
+            Returns
+            -------
+            float
+            '''
+            aligned_res = 0
+            length = len([s for s in sequence_1 if s != '-'])
+            for res_1, res_2 in zip(sequence_1, sequence_2):
+                if res_1 != '-' and res_2 != '-':
+                    aligned_res += 1
+            return round(100 * aligned_res / length, 2)
+
+        # extract sequences of interest
+        sequence_1 = list(self.sequences[sequence_name_1].sequence)
+        sequence_2 = list(self.sequences[sequence_name_2].sequence)
+        return _calc_coverage(sequence_1, sequence_2)
+
 
 def assemble_complex_aln(*args: typing.Type['Alignment'], names:
                          dict) -> typing.Type['Alignment']:

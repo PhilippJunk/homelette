@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+### Added
+- Classes for, given a target sequence, automatically searching for 
+potential templates and generating alignments using different methods:
+ - Base class: alignment.AlignmentGenerator
+- Methods for checking coverage between sequences in alignments:
+ - alignemnt.Alignment.calc_coverage
 
 ## [1.2] - 2021-09-15
 ### Added
