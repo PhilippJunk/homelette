@@ -5,7 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Added
-- Added .gitignore file
+- Added .gitignore file.
+
+### Fixed
+- Fixed mistake in docstring for `alignment.Alignment.calc_identity()`.
 
 ## [1.2] - 2021-09-15
 ### Added

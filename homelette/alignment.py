@@ -692,16 +692,16 @@ class Alignment():
         66.67
 
         Normalization happens for the length of sequence 1, so the order of
-        sequences matters
+        sequences matters.
 
         >>> aln = hm.Alignment(None)
         >>> aln.sequences = {
         ...     'seq1': hm.alignment.Sequence('seq1', 'AAAACCCCDDDD'),
-        ...     'seq3': hm.alignment.Sequence('seq3', 'AAAA----DDDD')
+        ...     'seq2': hm.alignment.Sequence('seq3', 'AAAA----DDDD')
         ...     }
         >>> aln.calc_identity('seq1', 'seq2')
         66.67
-        >>> aln.calc_identity('seq3', 'seq1')
+        >>> aln.calc_identity('seq2', 'seq1')
         100.0
         '''
 
