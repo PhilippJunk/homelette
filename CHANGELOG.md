@@ -9,7 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 potential templates and generating alignments using different methods:
  - Base class: alignment.AlignmentGenerator
 - Methods for checking coverage between sequences in alignments:
- - alignemnt.Alignment.calc_coverage
+ - `alignment.Alignment.calc_coverage`
+ - `alignment.Alignment.calc_coverage_target`
+ - `alignment.Alignment.calc_pairwise_coverage_all`
 
 ## [1.2] - 2021-09-15
 ### Added

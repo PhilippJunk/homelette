@@ -897,6 +897,87 @@ class Alignment():
         sequence_2 = list(self.sequences[sequence_name_2].sequence)
         return _calc_coverage(sequence_1, sequence_2)
 
+    def calc_coverage_target(
+            self, sequence_name: str) -> typing.Type['pd.DataFrame']:
+        '''
+        Calculate coverage of all sequences in the alignment to specified
+        target sequence.
+
+        Parameters
+        ----------
+        sequence_name : str
+            Target sequence
+
+        Returns
+        -------
+        coverages : pd.DataFrame
+            Dataframe with pairwise coverage
+
+        See Also
+        --------
+        calc_coverage
+        calc_pairwise_coverage_all
+
+        Notes
+        -----
+        Calculates coverage as described for calc_coverage:
+
+        .. math::
+
+            \\text{coverage} = \\frac{\\text{aligned residues}}
+            {\\text{length}(\\text{sequence1})}
+        '''
+        output = {
+                'sequence_1': [],
+                'sequence_2': [],
+                'coverage': [],
+                }
+        for sequence_name_2 in self.sequences.keys():
+            if not sequence_name == sequence_name_2:
+                output['sequence_1'].append(sequence_name)
+                output['sequence_2'].append(sequence_name_2)
+                output['coverage'].append(self.calc_coverage(
+                    sequence_name, sequence_name_2))
+        return pd.DataFrame(output)
+
+    def calc_pairwise_coverage_all(self) -> typing.Type['pd.DataFrame']:
+        '''
+        Calculate coverage between all sequences in the alignment.
+
+        Returns
+        -------
+        coverages : pd.DataFrame
+            Dataframe with pairwise coverage
+
+        See Also
+        --------
+        calc_coverage
+        calc_coverage_target
+
+        Notes
+        -----
+        Calculates coverage as described for calc_coverage:
+
+        .. math::
+
+            \\text{coverage} = \\frac{\\text{aligned residues}}
+            {\\text{length}(\\text{sequence1})}
+        '''
+        output = {
+                'sequence_1': [],
+                'sequence_2': [],
+                'coverage': [],
+                }
+        # iterate over all pairs of sequences
+        for sequence_name_1, sequence_name_2 in itertools.product(
+                self.sequences.keys(), repeat=2):
+            if not sequence_name_1 == sequence_name_2:
+                output['sequence_1'].append(sequence_name_1)
+                output['sequence_2'].append(sequence_name_2)
+                output['coverage'].append(self.calc_coverage(
+                    sequence_name_1, sequence_name_2))
+        return pd.DataFrame(output)
+
 
 def assemble_complex_aln(*args: typing.Type['Alignment'], names:
                          dict) -> typing.Type['Alignment']:
