@@ -31,10 +31,12 @@ __all__ = ['Alignment', 'Sequence', 'assemble_complex_aln']
 # Standard library imports
 import abc
 import contextlib
+import gzip
 import itertools
 import os.path
 import re
 import typing
+import urllib.request
 import warnings
 
 #  Third party imports
@@ -1124,17 +1126,17 @@ class AlignmentGenerator(abc.ABC):
             )
         return output
 
-    def select_templates(self, templates: typing.Iterable):
+    def select_templates(self, templates: typing.Iterable) -> None:
         '''
-        Select templates from suggested templates.
+        Select templates from suggested templates by identifier.
 
         Raises
         ------
         RuntimeError
             Alignment has not been generated yet
-        '''  # TODO
+        '''
         self._check_aln()
-        selection = ['target'] + [t for t in templates]
+        selection = ['target'] + list(templates)
         self.alignment.select_sequences(selection)
 
     def get_pdb(self, template_name: str, template_sequence: str,
@@ -1148,8 +1150,21 @@ class AlignmentGenerator(abc.ABC):
         template_sequence : str
         output_folder : str
         '''  # TODO
+        # TODO figure out how sequences are annotated coming from the PDB, and
+        # how chains are annotated. It seems to me though that I must download
+        # the whole file and then process it, download of specific chains is
+        # not possible
+        # TODO all three methods I am considering have to be forced to
+        # implement a unified interface to PDBID_CHAIN
         # TODO consider using sequence object instead of name and seq
-        # download template
+
+        # download template (adapted from
+        # https://stackoverflow.com/a/7244263/7912251)
+        template_pdbid, template_chain = template_name.split('_')
+        url = 'https://files.rcsb.org/download/' + template_pdbid + '.pdb.gz'
+        with urllib.request.urlopen(url) as response:
+            with gzip.GzipFile(fileobj=response) as uncompressed:
+                pdb = uncompressed.read().decode('utf-8')
 
         # check whether template has the same sequence as retrieved from the
         # seequence database or change sequence in alignment if it doesn't
@@ -1167,11 +1182,10 @@ class TestAlignmentGenerator(AlignmentGenerator):
     TEST ONLY
     '''
     def get_suggestion(self):
-        # TODO
         # For testing purpose, just retrieve sequence alignment from
         # examples/data/single/aln_2.fasta_aln
         self.alignment = Alignment('/home/junkpp/work/programs/homelette/'
-                                   'examples/data/single/aln_2.fasta_aln')
+                                   'examples/data/single/test.fasta_aln')
         self.alignment.rename_sequence('ARAF', 'target')
         self.target_seq = self.alignment.sequences['target'].sequence
 
