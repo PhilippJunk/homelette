@@ -32,6 +32,7 @@ __all__ = ['Alignment', 'Sequence', 'assemble_complex_aln']
 import abc
 import contextlib
 import itertools
+import os.path
 import re
 import typing
 import warnings
@@ -883,10 +884,14 @@ class AlignmentGenerator(abc.ABC):
     Parameters
     ----------
     sequence : str
-        Sequence in 1 letter amino acid code
+        Target sequence in 1 letter amino acid code
     '''
-    def __init__(self, sequence):
+    def __init__(self, sequence: str, target: str = 'target',
+                 template_location: str = './templates'):
         self.alignment = None
+        self.target_seq = sequence
+        self.target = 'target'
+        self.template_location = os.path.abspath(template_location)
 
     @abc.abstractmethod
     def get_suggestion(self):
@@ -903,7 +908,7 @@ class AlignmentGenerator(abc.ABC):
         Raises
         ------
         RuntimeError
-            alignment has not been generated yet
+            Alignment has not been generated yet
         '''
         if self.alignment is None:
             raise RuntimeError(
@@ -919,7 +924,7 @@ class AlignmentGenerator(abc.ABC):
         Raises
         ------
         RuntimeError
-            alignment has not been generated yet
+            Alignment has not been generated yet
         '''
         self._check_aln()
         # TODO show coverage, seqid, resolution, method, ranking based on
@@ -935,7 +940,7 @@ class AlignmentGenerator(abc.ABC):
         Raises
         ------
         RuntimeError
-            alignment has not been generated yet
+            Alignment has not been generated yet
         '''  # TODO
         self._check_aln()
         pass
@@ -960,6 +965,21 @@ class AlignmentGenerator(abc.ABC):
         # adjust residue numbers in template pdb
 
         # save pdb in template folder
+
+
+# TODO remove after testing
+class TestAlignmentGenerator(AlignmentGenerator):
+    '''
+    TEST ONLY
+    '''
+    def get_suggestion(self):
+        # TODO
+        # For testing purpose, just retrieve sequence alignment from
+        # examples/data/single/aln_2.fasta_aln
+        self.alignment = Alignment('/home/junkpp/work/programs/homelette/'
+                                   'examples/data/single/aln_2.fasta_aln')
+        self.alignment.rename_sequence('ARAF', 'target')
+        self.target_seq = self.alignment.sequences['target'].sequence
 
 
 class AlignmentGenerator_pdb(AlignmentGenerator):
