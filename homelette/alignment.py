@@ -1158,13 +1158,57 @@ class AlignmentGenerator(abc.ABC):
         # implement a unified interface to PDBID_CHAIN
         # TODO consider using sequence object instead of name and seq
 
-        # download template (adapted from
-        # https://stackoverflow.com/a/7244263/7912251)
-        template_pdbid, template_chain = template_name.split('_')
-        url = 'https://files.rcsb.org/download/' + template_pdbid + '.pdb.gz'
-        with urllib.request.urlopen(url) as response:
-            with gzip.GzipFile(fileobj=response) as uncompressed:
-                pdb = uncompressed.read().decode('utf-8')
+        # Helper functions
+        def parse_templates(templates: typing.Iterable) -> dict:
+            '''
+            Transforms list of templates to a dictionary structure
+            {'PDB_ID': chains, ..}
+            '''
+            out = {}
+            for template in templates:
+                pdbid, chain = template.split('_')
+                if pdbid not in out.keys():
+                    out[pdbid] = list(chain)
+                else:
+                    out[pdbid].append(chain)
+            return out
+
+        def download_pdb(pdbid: str) -> list:
+            '''
+            Downloads PDB file from the PDB and loads it into memory.
+
+            Adapted from https://stackoverflow.com/a/7244263/7912251)
+            '''
+            # TODO typing for output?
+            url = 'https://files.rcsb.org/download/' + pdbid + '.pdb.gz'
+            with urllib.request.urlopen(url) as response:
+                with gzip.GzipFile(fileobj=response) as uncompressed:
+                    pdb = uncompressed.read().decode('utf-8')
+            # TODO maybe already apply filtering?
+            # TODO maybe already transform into pandas data frame (for
+            # filtering or other operations?)
+            return pdb
+
+        def extract_chain(pdb) -> str:
+            '''
+            Given a PDB string, extract a specific chain.
+            '''
+            pass
+
+        def renumber_residues(pdb) -> str:
+            pass
+
+        def extract_sequence_from_pdb(pdb) -> str:
+            pass
+
+        # TODO maybe it makes sense to have a PDB object that encapsulates all
+        # that functionality?
+        # Could be shared with organization.Model()
+        # class pdb:
+        #   - import as pandas
+        #   - write to pdb file
+        #   - perform changes such as extracting chains, renumbering, etc
+        #   - extract sequence
 
         # check whether template has the same sequence as retrieved from the
         # seequence database or change sequence in alignment if it doesn't
