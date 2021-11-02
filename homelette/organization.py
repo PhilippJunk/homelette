@@ -317,8 +317,6 @@ class Model():
         ``Task.execute_routine`` for more details)
     routine : str
         The name of the routine that was used to generate this model
-    sequence : str
-        The sequence of the modelled structure (default None)
 
     Attributes
     ----------
