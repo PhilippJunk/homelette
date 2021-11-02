@@ -1,9 +1,38 @@
 '''
-'''
+``homelette.pdb_io``
+====================
+
+The :mod:`homelette.pdb_io` submodule contains an object for parsing and
+manipulating PDB files. There are several constructor function that can read
+PDB files or download them from the internet.
+
+
+Tutorials
+---------
+TODO?
+
+Functions and classes
+---------------------
+
+Functions and classes present in `homelette.pdb_io` are listed below:
+
+    :class:`PdbObject`
+    :func:`read_pdb`
+    :func:`download_pdb`
+
+-----
+
+'''  # TODO
+
+__all__ = ['read_pdb', 'download_pdb', 'PdbObject']
+
+# Standard library imports
 import gzip
 import urllib.request
 
+# Third party imports
 import pandas as pd
+
 
 class PdbObject:
     # TODO change name to camel case
@@ -15,11 +44,20 @@ class PdbObject:
 
     Attributes
     ----------
+
+    See Also
+    --------
+    read_pdb
+    download_pdb
+
+    Notes
+    -----
+    Please contruct instances of PdbObject using the constructor functions.
     '''  # TODO
     def __init__(self, lines):
         # TODO maybe filter for ATOM and HETATM records only?
         self.lines = [line for line in lines if line.startswith('ATOM') or
-                line.startswith('HETATM')]
+                      line.startswith('HETATM')]
 
     def parse_to_pd(self) -> pd.DataFrame:
         '''
@@ -60,14 +98,15 @@ class PdbObject:
 
     def get_sequence(self) -> str:
         '''
-        Retrieve the 1-letter amino acid sequence of the PDB, grouped by chains.
+        Retrieve the 1-letter amino acid sequence of the PDB, grouped by
+        chain.
 
         Returns
         -------
         str
             Amino acid sequence
         '''
-        def _321(aa):
+        def _321(aminoacid):
             '''
             Transform 3 letter amino acid code to 1 letter code
             '''
@@ -77,47 +116,73 @@ class PdbObject:
                        'MET': 'M', 'PHE': 'F', 'PRO': 'P', 'SER': 'S',
                        'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V',
                        'SEC': 'U'}
-            return aa.map(aa_code)
+            return aminoacid.map(aa_code)
 
-        # TODO deal with multiple chains?
+        # TODO deal with multiple chains
         pdb_df = self.parse_to_pd()
         # extract residues from pdb df
         residues = (
-                pdb_df[pdb_df.record.eq('ATOM')][['chainID', 'resSeq', 'resName']]
-                .groupby(['chainID', 'resSeq', 'resName'])
-                .count()
-                .reset_index()
+            pdb_df[pdb_df.record.eq('ATOM')][['chainID', 'resSeq', 'resName']]
+            .groupby(['chainID', 'resSeq', 'resName'])
+            .count()
+            .reset_index()
         )
         # transform residues from 3 letter to 1 letter code
         residues = (
-                residues.assign(resName=_321(residues['resName']))
+            residues.assign(resName=_321(residues['resName']))
         )
         return ''.join(residues['resName'].tolist()).upper()
 
     def transform_extract_chain(self, chain) -> 'PdbObject':
+        '''
+        '''  # TODO
         pass
 
     def transform_renumber_residues(self, starting_res) -> 'PdbObject':
+        '''
+        '''  # TODO
         pass
 
     def transform_change_chain_id(self, new_chain_id) -> 'PdbObject':
+        '''
+        '''  # TODO
         pass
 
 
 # Constructor functions for PdbObject
-def read_pdb(file_name) -> PdbObject:
+def read_pdb(file_name: str) -> PdbObject:
     '''
     Reads PDB from file.
-    '''  # TODO
+
+    Parameters
+    ----------
+    file_name : str
+        PDB file name
+
+    Returns
+    -------
+    PdbObject
+    '''
     with open(file_name, 'r') as file_handle:
         return PdbObject(file_handle.readlines())
 
-def download_pdb(pdbid) -> PdbObject:
+
+def download_pdb(pdbid: str) -> PdbObject:
     '''
     Download PDB from the RCSB.
+
+    Parameters
+    ----------
+    pdbid : str
+        PDB identifier
+
+    Returns
+    -------
+    PdbObject
     '''
+    # adapted from https://stackoverflow.com/a/7244263/7912251
     url = 'https://files.rcsb.org/download/' + pdbid + '.pdb.gz'
     with urllib.request.urlopen(url) as response:
-                with gzip.GzipFile(fileobj=response) as uncompressed:
-                    pdb = uncompressed.read().decode('utf-8')
+        with gzip.GzipFile(fileobj=response) as uncompressed:
+            pdb = uncompressed.read().decode('utf-8')
     return PdbObject(pdb.splitlines())
