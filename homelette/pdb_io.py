@@ -215,7 +215,7 @@ class PdbObject:
         Parameters
         ----------
         starting_res : int
-            Residue number to start renumbering at.
+            Residue number to start renumbering at (default 1)
 
         Returns
         -------
@@ -224,10 +224,25 @@ class PdbObject:
         Notes
         -----
         Missing residues in the PDB (i.e. unmodelled) will not be considered in
-        the renumbering.
+        the renumbering. If multiple chains are present in the PDB, numbering
+        will be continued from one chain to the next one.
         '''
-        # TODO
-        pass
+        #
+        curr_resSeq, prev_resSeq = str(), str()
+        index = int(starting_res) - 1
+        output_lines = []
+        for line in self.lines:
+            curr_resSeq = line[22:26]
+            if curr_resSeq != prev_resSeq:
+                index += 1
+                if len(str(index)) > 4:
+                    raise RuntimeError(
+                        'Digits of residues exceed available columns (4) in '
+                        'the PDB file format. Please choose a smaller number.')
+            output_lines.append(line[:22] + str(index).rjust(4) + line[26:])
+            prev_resSeq = curr_resSeq
+
+        return PdbObject(output_lines)
 
     def transform_change_chain_id(self, new_chain_id) -> 'PdbObject':
         '''
