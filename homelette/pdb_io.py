@@ -28,6 +28,7 @@ __all__ = ['read_pdb', 'download_pdb', 'PdbObject']
 
 # Standard library imports
 import gzip
+import typing
 import urllib.request
 
 # Third party imports
@@ -35,15 +36,18 @@ import pandas as pd
 
 
 class PdbObject:
-    # TODO change name to camel case
     '''
-    Object encapsulating functionality regarding PDB files and transformations
+    Object encapsulating functionality regarding the processing of PDB files
 
     Parameters
     ----------
+    lines : Iterable
+        The lines of the PDB
 
     Attributes
     ----------
+    lines
+        The lines of the PDB, filtered for ATOM and HETATM records
 
     See Also
     --------
@@ -53,11 +57,28 @@ class PdbObject:
     Notes
     -----
     Please contruct instances of PdbObject using the constructor functions.
+
+    Information is extracted according to the PDB file specification (version
+    3.30) and columns are named accordingly. See
+    https://www.wwpdb.org/documentation/file-format for more information.
     '''  # TODO
-    def __init__(self, lines):
-        # TODO maybe filter for ATOM and HETATM records only?
+    def __init__(self, lines: typing.Iterable) -> None:
+        # filter for ATOM and HETATM records
         self.lines = [line for line in lines if line.startswith('ATOM') or
                       line.startswith('HETATM')]
+
+    def write_pdb(self, file_name) -> None:
+        '''
+        Write PDB to file.
+
+        Parameters
+        ----------
+
+        file_name : str
+            The name of the file to write the PDB to.
+        '''
+        with open(file_name, 'w') as file_handler:
+            file_handler.writelines(self.lines)
 
     def parse_to_pd(self) -> pd.DataFrame:
         '''
@@ -66,12 +87,6 @@ class PdbObject:
         Returns
         -------
         pd.DataFrame
-
-        Notes
-        -----
-        Information is extracted according to the PDB file specification
-        (version 3.30) and columns are named accordingly. See
-        https://www.wwpdb.org/documentation/file-format for more information.
         '''
         # parse
         out = []
