@@ -28,8 +28,10 @@ __all__ = ['read_pdb', 'download_pdb', 'PdbObject']
 
 # Standard library imports
 import gzip
+import itertools
 import typing
 import urllib.request
+import warnings
 
 # Third party imports
 import pandas as pd
@@ -57,11 +59,7 @@ class PdbObject:
     Notes
     -----
     Please contruct instances of PdbObject using the constructor functions.
-
-    Information is extracted according to the PDB file specification (version
-    3.30) and columns are named accordingly. See
-    https://www.wwpdb.org/documentation/file-format for more information.
-    '''  # TODO
+    '''
     def __init__(self, lines: typing.Iterable) -> None:
         # filter for ATOM and HETATM records
         self.lines = [line for line in lines if line.startswith('ATOM') or
@@ -87,6 +85,12 @@ class PdbObject:
         Returns
         -------
         pd.DataFrame
+
+        Notes
+        -----
+        Information is extracted according to the PDB file specification
+        (version 3.30) and columns are named accordingly. See
+        https://www.wwpdb.org/documentation/file-format for more information.
         '''
         # parse
         out = []
@@ -111,10 +115,18 @@ class PdbObject:
         # concat to pd.DataFrame
         return pd.DataFrame(out)
 
-    def get_sequence(self) -> str:
+    def get_sequence(self, ignore_missing: bool = True) -> str:
         '''
         Retrieve the 1-letter amino acid sequence of the PDB, grouped by
         chain.
+
+        Parameters
+        ----------
+        ignore_missing : bool
+            Changes behaviour with regards to unmodelled residues. If True,
+            they will be ignored for generating the sequence (default). If
+            False, they will be represented in the sequence with the character
+            X.
 
         Returns
         -------
@@ -133,7 +145,6 @@ class PdbObject:
                        'SEC': 'U'}
             return aminoacid.map(aa_code)
 
-        # TODO deal with multiple chains
         pdb_df = self.parse_to_pd()
         # extract residues from pdb df
         residues = (
@@ -146,22 +157,110 @@ class PdbObject:
         residues = (
             residues.assign(resName=_321(residues['resName']))
         )
-        return ''.join(residues['resName'].tolist()).upper()
+        # check for multiple chains
+        if len(residues.chainID.unique()) > 1:
+            warnings.warn(
+                'Multiple chains present. Chains will be separated by "/".')
+        # handle missing residues
+        if not ignore_missing:
+            for chainID in residues.chainID.unique():
+                # retrieve min and max residues
+                min_resSeq = int(
+                        residues[residues['chainID'] == chainID]
+                        ['resSeq']
+                        .min())
+                max_resSeq = int(
+                        residues[residues['chainID'] == chainID]
+                        ['resSeq']
+                        .max())
+                # create new dataframe with complete records from min to max
+                new_df = pd.DataFrame({
+                    'chainID': chainID,
+                    'resSeq': list(range(min_resSeq, max_resSeq + 1))
+                    })
+                # merge new with old data frame, replace missing values with X
+                # adapted from https://stackoverflow.com/a/54906079/7912251
+                residues = (
+                    residues.merge(new_df, on=('chainID', 'resSeq'),
+                                   how='outer', sort=True)
+                    .fillna('X'))
+        # extract chains on their own, then concat with / as separator
+        sequences = (
+            [''.join(residues[residues['chainID'] == chainID]['resName']
+                     .tolist())
+             for chainID in residues.chainID.unique()])
+        return '/'.join(sequences).upper()
 
     def transform_extract_chain(self, chain) -> 'PdbObject':
         '''
-        '''  # TODO
-        pass
+        Extract chain from PDB.
 
-    def transform_renumber_residues(self, starting_res) -> 'PdbObject':
+        Parameters
+        ----------
+        chain : str
+            The chain ID to be extracted.
+
+        Returns
+        -------
+        PdbObject
         '''
-        '''  # TODO
+        filtered_lines = [line for line in self.lines if line[21] == chain]
+        return PdbObject(filtered_lines)
+
+    def transform_renumber_residues(
+            self, starting_res: int = 1) -> 'PdbObject':
+        '''
+        Renumber residues in PDB.
+
+        Parameters
+        ----------
+        starting_res : int
+            Residue number to start renumbering at.
+
+        Returns
+        -------
+        PdbObject
+
+        Notes
+        -----
+        Missing residues in the PDB (i.e. unmodelled) will not be considered in
+        the renumbering.
+        '''
+        # TODO
         pass
 
     def transform_change_chain_id(self, new_chain_id) -> 'PdbObject':
         '''
-        '''  # TODO
-        pass
+        Replace chain ID for every entry in PDB.
+
+        Parameters
+        ----------
+        new_chain_id : str
+            New chain ID.
+
+        Returns
+        -------
+        PdbObject
+        '''
+        changed_lines = [(line[:21] + new_chain_id + line[22:])
+                         for line in self.lines]
+        return PdbObject(changed_lines)
+
+    def transform_concat(self, *others: 'PdbObject') -> 'PdbObject':
+        '''
+        Concat PDB with other PDBs.
+
+        Parameters
+        ----------
+        *others : 'PdbObject
+            Any number of PDBs.
+
+        Returns
+        -------
+        PdbObject
+        '''
+        list_of_lines = [self.lines] + [pdb.lines for pdb in others]
+        return PdbObject(itertools.chain(*list_of_lines))
 
 
 # Constructor functions for PdbObject

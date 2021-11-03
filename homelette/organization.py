@@ -180,7 +180,7 @@ class Task():
             sequence named "1WXN" to be used as a template, it is expected that
             there will be a PDB file named "1WXN.pdb" in the specified template
             location (default is current working directory)
-        **kwargs :
+        **kwargs
             Named parameters passed directly on to the Routine object when the
             modelling is performed. Please check the documentation in order to
             make sure that the parameters passed on are available with the
