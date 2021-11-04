@@ -23,6 +23,8 @@ Functions and classes present in `homelette.pdb_io` are listed below:
 -----
 
 '''  # TODO
+# TODO
+# consider writing some function to filter out residues by name (for HOH?)
 
 __all__ = ['read_pdb', 'download_pdb', 'PdbObject']
 
@@ -261,6 +263,38 @@ class PdbObject:
                          for line in self.lines]
         return PdbObject(changed_lines)
 
+    def transform_filter_res_name(
+            self, selection: typing.Iterable,
+            mode: str = 'out') -> 'PdbObject':
+        '''
+        Filter PDB by residue name.
+
+        Parameters
+        ----------
+        selection : Iterable
+            For which residue names to filter
+        mode : str
+            Filtering mode. If mode = "out", the selection will be filtered out
+            (default). If mode = "in", everything except the selection will be
+            filtered out.
+
+        Returns
+        -------
+        PdbObject
+        '''
+        # implement different behaviour based on mode
+        if mode == 'out':
+            def check_line(line):
+                return line[17:20].strip() not in selection
+        elif mode == 'in':
+            def check_line(line):
+                return line[17:20].strip() in selection
+        else:
+            raise ValueError('Mode has to be "out" or "in". "' + mode +
+                             '" is not an accepted value.')
+        filtered_lines = [line for line in self.lines if check_line(line)]
+        return PdbObject(filtered_lines)
+
     def transform_concat(self, *others: 'PdbObject') -> 'PdbObject':
         '''
         Concat PDB with other PDBs.
@@ -293,7 +327,7 @@ def read_pdb(file_name: str) -> PdbObject:
     PdbObject
     '''
     with open(file_name, 'r') as file_handle:
-        return PdbObject(file_handle.readlines())
+        return PdbObject(file_handle.read().splitlines())
 
 
 def download_pdb(pdbid: str) -> PdbObject:
