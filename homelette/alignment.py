@@ -31,12 +31,10 @@ __all__ = ['Alignment', 'Sequence', 'assemble_complex_aln']
 # Standard library imports
 import abc
 import contextlib
-import gzip
 import itertools
 import os.path
 import re
 import typing
-import urllib.request
 import warnings
 
 #  Third party imports
@@ -44,6 +42,7 @@ import pandas as pd
 
 # Local application imports
 from . import pdb_io
+
 
 class Sequence():
     '''
@@ -1143,23 +1142,19 @@ class AlignmentGenerator(abc.ABC):
 
     def get_pdb(self, templates: typing.Iterable, output_folder: str) -> None:
         '''
-        Downloads and processes template from PDB
+        Downloads and processes templates present in suggestion
 
         Parameters
         ----------
         templates : Iterable
         output_folder : str
         '''  # TODO
-        # TODO Change inputs to this function to list of templates instead of
-        # single template ids. That way multiple chains from one PDBid can be
-        # processed with one download
-        # TODO figure out how sequences are annotated coming from the PDB, and
-        # how chains are annotated. It seems to me though that I must download
-        # the whole file and then process it, download of specific chains is
-        # not possible
         # TODO all three methods I am considering have to be forced to
         # implement a unified interface to PDBID_CHAIN
-        # TODO consider using sequence object instead of name and seq
+
+        self._check_aln()
+        if not os.path.exists(self.template_location):
+            os.makedirs(self.makedirs, exist_ok=True)
 
         # Helper functions
         def parse_templates(templates: typing.Iterable) -> dict:
@@ -1180,6 +1175,42 @@ class AlignmentGenerator(abc.ABC):
             # download template
             pdb = pdb_io.download_pdb(pdbid)
             # continue with extracting chains
+            for chain in chains:
+                pdb_chain = pdb.transform_extract_chain(chain)
+                # check sequence from template vs sequence from alignment
+                seq_alignment = self.alignment.get_sequence(
+                    '_'.join([pdbid, chain])).replace('-', '')
+                seq_template = pdb_chain.get_sequence(ignore_missing=False)
+                # check if template sequence is in alignment sequence
+                seq_match = re.search(seq_template.replace('X', r'\w'),
+                                      seq_alignment)
+                if seq_match is None:
+                    raise RuntimeError(
+                        f'Template: {0}_{1}: Could not match template sequence'
+                        'with aligned sequence.'
+                        .format(pdbid, chain))
+
+                # pad template sequence if necessary
+                seq_template_padded = (
+                        seq_template
+                        .rjust(len(seq_template) + seq_match.start(), 'X')
+                        .ljust(len(seq_alignment), 'X'))
+
+                # replace sequence in alignment with template sequence
+
+                # process template pdb: remove HOH, renumber residues, rename
+                # chain id
+                pdb_chain = (
+                        pdb_chain
+                        .transform_filter_res_name(['HOH'])
+                        .transform_renumber_residues(starting_res=1)
+                        .transform_change_chain_id(new_chain_id='A'))
+
+                # write template sequence
+                pdb_chain.write_pdb(os.path.join(
+                    self.template_location, pdbid + '_' + chain + '.pdb'))
+
+                # annotate template sequence in alignment
 
         # check whether template has the same sequence as retrieved from the
         # seequence database or change sequence in alignment if it doesn't
