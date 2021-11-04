@@ -675,9 +675,11 @@ class Alignment():
         # check if sequences fully match
         if re.fullmatch(
                 new_sequence.upper().replace('X', r'\w'),
-                self.sequences[seq_name].sequence.upper()) is None:
+                self.sequences[seq_name].sequence.upper().replace('-', '')
+                ) is None:
             raise ValueError(
-                '{}: New sequence does not match with sequence in alignment.')
+                f'{seq_name}: New sequence does not match with sequence in '
+                'alignment.')
 
         new_sequence = list(new_sequence.replace('-', '').upper())
         old_sequence = list(self.sequences[seq_name].sequence.upper())
@@ -1210,8 +1212,11 @@ class AlignmentGenerator(abc.ABC):
         # implement a unified interface to PDBID_CHAIN
 
         self._check_aln()
-        if not os.path.exists(self.template_location):
-            os.makedirs(self.makedirs, exist_ok=True)
+        # Initialize template dir
+        # TODO replace output folder with self.template_location
+        # TODO replace templates with automatic retrieval from self.alignment
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder, exist_ok=True)
 
         # Helper functions
         def parse_templates(templates: typing.Iterable) -> dict:
@@ -1228,30 +1233,54 @@ class AlignmentGenerator(abc.ABC):
                     out[pdbid].append(chain)
             return out
 
-        for pdbid, chains in parse_templates(templates):
+        def adjust_template_seq(seq_alignment: str,
+                                seq_template: str):
+            '''
+            Adjusts the sequence from the template to the sequence present in
+            the alignment
+
+            Check match
+            Pad right and left with missing residues
+            '''
+            print(seq_alignment)
+            print(seq_template)
+            # check if template sequence is in alignment sequence
+            seq_match = re.search(seq_template.replace('X', r'\w'),
+                                  seq_alignment)
+
+            if seq_match is None:
+                raise RuntimeError(
+                    'Could not match template sequence with aligned sequence.')
+
+            # pad template sequence if necessary
+            seq_template_padded = (
+                    seq_template
+                    .rjust(len(seq_template) + seq_match.start(), 'X')
+                    .ljust(len(seq_alignment), 'X'))
+
+            return seq_template_padded
+
+        templates_parsed = parse_templates(templates)
+        for pdbid in templates_parsed:
             # download template
             pdb = pdb_io.download_pdb(pdbid)
             # continue with extracting chains
-            for chain in chains:
+            for chain in templates_parsed[pdbid]:
                 pdb_chain = pdb.transform_extract_chain(chain)
-                # check sequence from template vs sequence from alignment
-                seq_alignment = self.alignment.get_sequence(
-                    '_'.join([pdbid, chain])).replace('-', '')
-                seq_template = pdb_chain.get_sequence(ignore_missing=False)
-                # check if template sequence is in alignment sequence
-                seq_match = re.search(seq_template.replace('X', r'\w'),
-                                      seq_alignment)
-                if seq_match is None:
-                    raise RuntimeError(
-                        f'Template: {0}_{1}: Could not match template sequence'
-                        'with aligned sequence.'
-                        .format(pdbid, chain))
 
-                # pad template sequence if necessary
-                seq_template_padded = (
-                        seq_template
-                        .rjust(len(seq_template) + seq_match.start(), 'X')
-                        .ljust(len(seq_alignment), 'X'))
+                # adjust sequence from template to sequence from alignment
+                # TODO consider that there is functionality with the same name:
+                # PdbObject.get_sequence and Alignment.get_sequence
+                seq_alignment = self.alignment.get_sequence(
+                    '_'.join([pdbid, chain])).sequence.replace('-', '')
+                seq_template = pdb_chain.get_sequence(ignore_missing=False)
+                try:
+                    seq_template_padded = adjust_template_seq(
+                            seq_alignment, seq_template)
+                except RuntimeError as e:
+                    print(seq_alignment)
+                    print(seq_template)
+                    raise RuntimeError(f'Template: {pdbid}_{chain}') from e
 
                 # replace sequence in alignment with template sequence
                 self.alignment.replace_sequence(
@@ -1265,20 +1294,15 @@ class AlignmentGenerator(abc.ABC):
                         .transform_renumber_residues(starting_res=1)
                         .transform_change_chain_id(new_chain_id='A'))
 
-                # write template sequence
+                # write template to file
+                # TODO change template location to self.template_location
                 pdb_chain.write_pdb(os.path.join(
-                    self.template_location, pdbid + '_' + chain + '.pdb'))
+                    output_folder, pdbid + '_' + chain + '.pdb'))
 
                 # annotate template sequence in alignment
-
-        # check whether template has the same sequence as retrieved from the
-        # seequence database or change sequence in alignment if it doesn't
-
-        # adjust residue numbers in template pdb
-
-        # annotate sequence in alignment
-
-        # save pdb in template folder
+                self.alignment.sequences[pdbid + '_' + chain].annotate(
+                    seq_type='structure', pdb_code=pdbid + '_' + chain,
+                    begin_res='1', begin_chain='A')
 
 
 # TODO remove after testing
@@ -1290,7 +1314,7 @@ class TestAlignmentGenerator(AlignmentGenerator):
         # For testing purpose, just retrieve sequence alignment from
         # examples/data/single/aln_2.fasta_aln
         self.alignment = Alignment('/home/junkpp/work/programs/homelette/'
-                                   'examples/data/single/test.fasta_aln')
+                                   'test_alngen.fasta_aln')
         self.alignment.rename_sequence('ARAF', 'target')
         self.target_seq = self.alignment.sequences['target'].sequence
 
