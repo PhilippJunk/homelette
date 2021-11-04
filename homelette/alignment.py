@@ -645,6 +645,63 @@ class Alignment():
             for sequence in self.sequences.values():
                 sequence.remove_gaps(positions=intersection_gaps)
 
+    # TODO think about name:
+    # maybe something like 'remove_missing_res'?
+    def replace_sequence(self, seq_name: str, new_sequence: str) -> None:
+        '''
+        Targeted replacement of sequence in alignment.
+
+        Parameters
+        ----------
+        seq_name : str
+            The identifier of the sequence that will be replaced.
+        new_sequence : str
+            The new sequence.
+
+        Notes
+        -----
+        This replacement is designed to introduce missing residues from
+        template structures into the alignment and therefore has very strict
+        requirements. The new and old sequence have to be identical, except
+        that the new sequence might contain unmodelled residues. These are
+        indicated by the letter 'X' in the new sequence, and will result in a
+        gap '-' in the alignment after replacement. It is important that all
+        unmodelled residues, even at the start or beginning of the template
+        sequence are correctly labeled as 'X'.
+
+        Examples
+        --------
+        '''  # TODO examples
+        # check if sequences fully match
+        if re.fullmatch(
+                new_sequence.upper().replace('X', r'\w'),
+                self.sequences[seq_name].sequence.upper()) is None:
+            raise ValueError(
+                '{}: New sequence does not match with sequence in alignment.')
+
+        new_sequence = list(new_sequence.replace('-', '').upper())
+        old_sequence = list(self.sequences[seq_name].sequence.upper())
+        replaced_seq = list()
+        for old_res in old_sequence:
+            if old_res == '-':
+                # transfer gaps
+                replaced_seq.append(old_res)
+            else:
+                new_res = new_sequence.pop(0)
+                if old_res == new_res:
+                    # match
+                    replaced_seq.append(new_res)
+                elif old_res != new_res and new_res == 'X':
+                    # introduce gaps for unmodelled residues
+                    replaced_seq.append('-')
+                else:
+                    # after checking with re.fullmatch, this should never run
+                    raise ValueError(
+                        '{}: Mismatch detected'.format(seq_name))
+
+        # update sequence
+        self.sequences[seq_name].sequence = ''.join(replaced_seq)
+
     def calc_identity(self, sequence_name_1: str,
                       sequence_name_2: str) -> float:
         '''
@@ -1197,6 +1254,8 @@ class AlignmentGenerator(abc.ABC):
                         .ljust(len(seq_alignment), 'X'))
 
                 # replace sequence in alignment with template sequence
+                self.alignment.replace_sequence(
+                        pdbid + '_' + chain, seq_template_padded)
 
                 # process template pdb: remove HOH, renumber residues, rename
                 # chain id
