@@ -1128,6 +1128,11 @@ class AlignmentGenerator(abc.ABC):
         self.target_seq = sequence
         self.target = 'target'
         self.template_location = os.path.abspath(template_location)
+        # Simple state machine, together with _check_state
+        self.state = {
+            'has_alignment': False,
+            'is_processed': False,
+            }
 
     @abc.abstractmethod
     def get_suggestion(self):
@@ -1136,20 +1141,79 @@ class AlignmentGenerator(abc.ABC):
         '''
         pass
 
-    def _check_aln(self):
+    def _check_state(self, has_alignment: bool = None, is_processed: bool =
+                     None) -> None:
         '''
-        Check if alignment has already been generated, if not raise
-        RuntimeError
+        Check state of the AlignmentGenerator object.
+
+        Parameters
+        ----------
+        has_alignment: bool
+            Assesses whether an alignment has already been generated.
+        is_processed: bool
+            Assesses whether, based on the alignment, templates have already
+            been downloaded and processed from the PDB.
 
         Raises
         ------
         RuntimeError
-            Alignment has not been generated yet
+            Current state does not support requested behaviour.
+
+        Notes
+        -----
+        Some functionality can only be performed with the object being
+        in a certain state.
+        Giving None as an input prevents the check for that particular state to
+        occur.
         '''
-        if self.alignment is None:
-            raise RuntimeError(
-                'Please generate a suggestion first using the "get_suggestion"'
-                'method.')  # TODO get_suggestion still the name I want to use?
+        def perform_check(required, state):
+            '''
+            Helper function for checking the state
+
+            Returns true if required is None
+            '''
+            if required is None:
+                return True
+            if required is state:
+                return True
+            if required is not state:
+                return False
+
+        if not (perform_check(has_alignment, self.state['has_alignment']) and
+                perform_check(is_processed, self.state['is_processed'])):
+            msg = (
+                f'Current state does not support requested behaviour.\n'
+                f'has_alignment: current: {self.state["has_alignment"]} '
+                f'required: {has_alignment}\n'
+                f'is_processed: current: {self.state["is_processed"]} '
+                f'required: {is_processed}\n'
+                )
+            # add more detail if has_alignment has mismatch
+            if not perform_check(has_alignment, self.state['has_alignment']):
+                if not has_alignment and self.state['has_alignment']:
+                    msg = msg + (
+                        '\nYou have already generated an alignment.'
+                        )
+                if has_alignment and not self.state['has_alignment']:
+                    msg = msg + (
+                        '\nRequested action requires an alignment. Please call'
+                        ' get_suggestion to generate an alignment.'
+                        )
+            # add more detail if is_processed as mismatch
+            if not perform_check(is_processed, self.state['is_processed']):
+                if not is_processed and self.state['is_processed']:
+                    msg = msg + (
+                        'You have already downloaded the template structures '
+                        'from the PDB and updated the alignment.\n'
+                        )
+                if is_processed and not self.state['is_processed']:
+                    msg = msg + (
+                        'Requested action requires the templates to be '
+                        'downloaded and the alignment to be processed. Please '
+                        'call get_pdbs to perform these steps.\n'
+                        )
+            # raise error with assembled details
+            raise RuntimeError(msg)
 
     def show_suggestion(self) -> typing.Type['pd.DataFrame']:
         '''
@@ -1167,7 +1231,7 @@ class AlignmentGenerator(abc.ABC):
         RuntimeError
             Alignment has not been generated yet
         '''
-        self._check_aln()
+        self._check_state(has_alignment=True, is_processed=None)
 
         df_coverage = self.alignment.calc_coverage_target(self.target)
         df_identity = self.alignment.calc_identity_target(self.target)
@@ -1195,7 +1259,7 @@ class AlignmentGenerator(abc.ABC):
         RuntimeError
             Alignment has not been generated yet
         '''
-        self._check_aln()
+        self._check_state(has_alignment=True, is_processed=False)
         selection = ['target'] + list(templates)
         self.alignment.select_sequences(selection)
 
@@ -1216,12 +1280,8 @@ class AlignmentGenerator(abc.ABC):
         '''
         # TODO all three methods I am considering have to be forced to
         # implement a unified interface to PDBID_CHAIN
+        self._check_state(has_alignment=True, is_processed=False)
 
-        if verbose:
-            print('Checking alignment...')
-        self._check_aln()
-        if verbose:
-            print('Alignment found!\n')
         # Initialize template dir
         # TODO replace output folder with self.template_location
         # TODO replace templates with automatic retrieval from self.alignment
@@ -1337,6 +1397,9 @@ class AlignmentGenerator(abc.ABC):
                     begin_res='1', begin_chain='A')
             if verbose:
                 print('')
+
+        # update state
+        self.state['is_processed'] = True
         if verbose:
             print('Finishing... All templates successfully\ndownloaded and '
                   'processed!\nTemplates can be found in\n'
@@ -1349,12 +1412,17 @@ class TestAlignmentGenerator(AlignmentGenerator):
     TEST ONLY
     '''
     def get_suggestion(self):
+        # check state
+        self._check_state(has_alignment=False, is_processed=False)
         # For testing purpose, just retrieve sequence alignment from
         # examples/data/single/aln_2.fasta_aln
         self.alignment = Alignment('/home/junkpp/work/programs/homelette/'
                                    'test_alngen.fasta_aln')
         self.alignment.rename_sequence('ARAF', 'target')
         self.target_seq = self.alignment.sequences['target'].sequence
+
+        # update state
+        self.state['has_alignment'] = True
 
 
 class AlignmentGenerator_pdb(AlignmentGenerator):
@@ -1374,6 +1442,11 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
     def get_suggestion(self):
         '''
         '''  # TODO
+        # check state
+        self._check_state(has_alignment=False, is_processed=False)
+        # TODO
+        # update state
+        self.state['has_alignment'] = True
         pass
 
 
@@ -1386,6 +1459,11 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
     def get_suggestion(self):
         '''
         '''  # TODO
+        # check state
+        self._check_state(has_alignment=False, is_processed=False)
+        # TODO
+        # update state
+        self.state['has_alignment'] = True
         pass
 
 
@@ -1398,5 +1476,10 @@ class AlignmentGenerator_hmmer(AlignmentGenerator):
     def get_suggestion(self):
         '''
         '''  # TODO
+        # check state
+        self._check_state(has_alignment=False, is_processed=False)
+        # TODO
+        # update state
+        self.state['has_alignment'] = True
         pass
 # TODO maybe implement dependency check for non-python packages?
