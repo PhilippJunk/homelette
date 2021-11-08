@@ -1199,24 +1199,44 @@ class AlignmentGenerator(abc.ABC):
         selection = ['target'] + list(templates)
         self.alignment.select_sequences(selection)
 
-    def get_pdb(self, templates: typing.Iterable, output_folder: str) -> None:
+    # TODO name of the function? download_templates?
+    def get_pdb(self, verbose: bool = True) -> None:
         '''
-        Downloads and processes templates present in suggestion
+        Downloads and processes templates present in alignment.
 
         Parameters
         ----------
-        templates : Iterable
-        output_folder : str
-        '''  # TODO
+        verbose : bool
+            Explain what operations are performed
+
+        Raises
+        ------
+        RuntimeError
+            Alignment has not been generated yet
+        '''
         # TODO all three methods I am considering have to be forced to
         # implement a unified interface to PDBID_CHAIN
 
+        if verbose:
+            print('Checking alignment...')
         self._check_aln()
+        if verbose:
+            print('Alignment found!\n')
         # Initialize template dir
         # TODO replace output folder with self.template_location
         # TODO replace templates with automatic retrieval from self.alignment
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder, exist_ok=True)
+        if verbose:
+            print('Checking template dir...')
+        if not os.path.exists(self.template_location):
+            if verbose:
+                print('Template dir not found...')
+            os.makedirs(self.template_location, exist_ok=True)
+            if verbose:
+                print(f'New template dir created at {self.template_location}!'
+                      '\n')
+        else:
+            if verbose:
+                print('Template dir found!\n')
 
         # Helper functions
         def parse_templates(templates: typing.Iterable) -> dict:
@@ -1242,8 +1262,6 @@ class AlignmentGenerator(abc.ABC):
             Check match
             Pad right and left with missing residues
             '''
-            print(seq_alignment)
-            print(seq_template)
             # check if template sequence is in alignment sequence
             seq_match = re.search(seq_template.replace('X', r'\w'),
                                   seq_alignment)
@@ -1260,13 +1278,25 @@ class AlignmentGenerator(abc.ABC):
 
             return seq_template_padded
 
+        templates = [template for template in self.alignment.sequences.keys()
+                     if template != self.target]
         templates_parsed = parse_templates(templates)
+
+        if verbose:
+            print('Processing templates:\n')
+
         for pdbid in templates_parsed:
             # download template
+            if verbose:
+                print(f'{pdbid} downloading from PDB...')
             pdb = pdb_io.download_pdb(pdbid)
+            if verbose:
+                print(f'{pdbid} downloaded!')
             # continue with extracting chains
             for chain in templates_parsed[pdbid]:
                 pdb_chain = pdb.transform_extract_chain(chain)
+                if verbose:
+                    print(f'{pdbid}_{chain}: Chain extracted!')
 
                 # adjust sequence from template to sequence from alignment
                 # TODO consider that there is functionality with the same name:
@@ -1278,13 +1308,13 @@ class AlignmentGenerator(abc.ABC):
                     seq_template_padded = adjust_template_seq(
                             seq_alignment, seq_template)
                 except RuntimeError as e:
-                    print(seq_alignment)
-                    print(seq_template)
                     raise RuntimeError(f'Template: {pdbid}_{chain}') from e
 
                 # replace sequence in alignment with template sequence
                 self.alignment.replace_sequence(
                         pdbid + '_' + chain, seq_template_padded)
+                if verbose:
+                    print(f'{pdbid}_{chain}: Alignment updated!')
 
                 # process template pdb: remove HOH, renumber residues, rename
                 # chain id
@@ -1295,14 +1325,22 @@ class AlignmentGenerator(abc.ABC):
                         .transform_change_chain_id(new_chain_id='A'))
 
                 # write template to file
-                # TODO change template location to self.template_location
                 pdb_chain.write_pdb(os.path.join(
-                    output_folder, pdbid + '_' + chain + '.pdb'))
+                    self.template_location, pdbid + '_' + chain + '.pdb'))
+
+                if verbose:
+                    print(f'{pdbid}_{chain}: PDB processed!')
 
                 # annotate template sequence in alignment
                 self.alignment.sequences[pdbid + '_' + chain].annotate(
                     seq_type='structure', pdb_code=pdbid + '_' + chain,
                     begin_res='1', begin_chain='A')
+            if verbose:
+                print('')
+        if verbose:
+            print('Finishing... All templates successfully\ndownloaded and '
+                  'processed!\nTemplates can be found in\n'
+                  f'"{self.template_location}".')
 
 
 # TODO remove after testing
