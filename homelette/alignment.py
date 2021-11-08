@@ -1264,7 +1264,7 @@ class AlignmentGenerator(abc.ABC):
         self.alignment.select_sequences(selection)
 
     # TODO name of the function? download_templates?
-    def get_pdb(self, verbose: bool = True) -> None:
+    def get_pdbs(self, verbose: bool = True) -> None:
         '''
         Downloads and processes templates present in alignment.
 
