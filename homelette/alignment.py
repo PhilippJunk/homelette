@@ -32,9 +32,13 @@ __all__ = ['Alignment', 'Sequence', 'assemble_complex_aln']
 import abc
 import contextlib
 import itertools
+import json
 import os.path
 import re
 import typing
+import urllib.error
+import urllib.parse
+import urllib.request
 import warnings
 
 #  Third party imports
@@ -1444,6 +1448,112 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
         '''  # TODO
         # check state
         self._check_state(has_alignment=False, is_processed=False)
+
+        # Helper functions
+        def query_pdb(sequence: str, seq_id: float = 0.5) -> list:
+            '''
+            Queries sequence with sequence identity cutoff against the PDB data
+            base.
+
+            Parameters
+            ----------
+            sequence : str
+                Sequence as string
+            seq_id : float
+                Sequence identity cutoff, between 0 and 1
+
+            Returns
+            -------
+            templates : list
+            '''
+            # assembly query
+            url = 'https://search.rcsb.org/rcsbsearch/v1/query?json='
+            # TODO consider exp. method?, consider sequence length restriction!
+            # TODO maybe to much white space in there right now...
+            query = f'''
+            {{
+              "query": {{
+                "type": "group",
+                "logical_operator": "and",
+                "nodes": [
+                  {{
+                    "type": "terminal",
+                    "service": "sequence",
+                    "parameters": {{
+                      "evalue_cutoff": 1,
+                      "identity_cutoff": {seq_id},
+                      "target": "pdb_protein_sequence",
+                      "value": "{sequence}"
+                    }}
+                  }},
+                  {{
+                    "type": "terminal",
+                    "service": "text",
+                    "parameters": {{
+                      "attribute": "exptl.method",
+                      "operator": "exact_match",
+                      "negation": false,
+                      "value": "X-RAY DIFFRACTION"
+                    }}
+                  }},
+                  {{
+                    "type": "terminal",
+                    "service": "text",
+                    "parameters": {{
+                      "attribute": "entity_poly.rcsb_sample_sequence_length",
+                      "operator": "greater_or_equal",
+                      "negation": false,
+                      "value": 30
+                    }}
+                  }}
+                ]
+              }},
+              "request_options": {{
+                "return_all_hits": true,
+                "scoring_strategy": "sequence"
+              }},
+              "return_type": "polymer_instance"
+            }}
+            '''
+
+            # format query
+            query = urllib.parse.quote_plus(query)
+
+            # access query
+            with urllib.request.urlopen(url + query) as response:
+                # check status
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                elif response.status == 204:
+                    return []
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200 or 204, got '
+                            f'{response.status}')
+
+            # extract PDB ids and chains from response
+            templates = list()
+            for hit in response_decoded['result_set']:
+                template = hit['identifier'].replace('.', '_')
+                templates.append(template)
+
+            # TODO consider that the PDB does not only return pdbids, but also
+            # pairwise alignments of target sequence vs template sequence.
+            # These could be used to assemble a MSA (or rather, MSA like
+            # representation) instead of relying on clustal omega.
+            # sequences are available at:
+            # seq_target = hit['services']['0']['match_context']['0']
+            # ['query_aligned_seq'] and ['subject_aligned_seq']
+            # https://search.rcsb.org/rcsbsearch/v1/query?json=%7B%22query%22%3A%7B%22type%22%3A%22terminal%22%2C%22service%22%3A%22sequence%22%2C%22parameters%22%3A%7B%22evalue_cutoff%22%3A1%2C%22identity_cutoff%22%3A0.9%2C%22target%22%3A%22pdb_protein_sequence%22%2C%22value%22%3A%22MTEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSYRKQVVIDGETCLLDILDTAGQEEYSAMRDQYMRTGEGFLCVFAINNTKSFEDIHQYREQIKRVKDSDDVPMVLVGNKCDLPARTVETRQAQDLARSYGIPYIETSAKTRQGVEDAFYTLVREIRQHKLRKLNPPDESGPGCMNCKCVIS%22%7D%7D%2C%22request_options%22%3A%7B%22scoring_strategy%22%3A%22sequence%22%7D%2C%22return_type%22%3A%22polymer_entity%22%7D
+
+            return templates
+
+        def construct_alignment():
+            '''
+            Construct alignment with clustal omega
+            '''
+            pass
         # TODO
         # update state
         self.state['has_alignment'] = True
