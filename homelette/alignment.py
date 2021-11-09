@@ -1439,10 +1439,6 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
     sequence : str
         Target sequence
     '''
-    def __init__(self, sequence):
-        # TODO sequence as string or Sequence object?
-        pass
-
     def get_suggestion(self):
         '''
         '''  # TODO
@@ -1515,8 +1511,33 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
               "return_type": "polymer_instance"
             }}
             '''
+            # NOTES
+            # return type plays a big role
+            #   - polymer_instance gives separate chains (3NY5.A, 3NY5.B, ...)
+            #   - polymer_entity gives separate sequences (3NY5_1)
+            # in the case of polymer_entity, I can also get an alignment (which
+            # could be combined for an alignment object?)
+            # however this does not seem to work with polymer_instance
+            # Is there a way to
+            #   - either get an alignment with polymer_instance?
+            #   - or retrieve structures from a polymer_entity?
+            # potentially, hmmer and hhblits will also return entities and not
+            # instances, so potentially it might make sense to work with
+            # entites?
+
+            # NOTES
+            # service sequence is using the MMseqs2 software for matching
+            # the query sequence to PDB sequences
+            # https://github.com/soedinglab/MMseqs2
+
+            # NOTES different options
+            # A: take alignment from instances, or
+            # B: re-align with clustal?
 
             # format query
+            # remove whitespaces
+            query = re.sub(r'\s\s+', '', query)
+            # encode URL
             query = urllib.parse.quote_plus(query)
 
             # access query
@@ -1545,7 +1566,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             # sequences are available at:
             # seq_target = hit['services']['0']['match_context']['0']
             # ['query_aligned_seq'] and ['subject_aligned_seq']
-            # https://search.rcsb.org/rcsbsearch/v1/query?json=%7B%22query%22%3A%7B%22type%22%3A%22terminal%22%2C%22service%22%3A%22sequence%22%2C%22parameters%22%3A%7B%22evalue_cutoff%22%3A1%2C%22identity_cutoff%22%3A0.9%2C%22target%22%3A%22pdb_protein_sequence%22%2C%22value%22%3A%22MTEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSYRKQVVIDGETCLLDILDTAGQEEYSAMRDQYMRTGEGFLCVFAINNTKSFEDIHQYREQIKRVKDSDDVPMVLVGNKCDLPARTVETRQAQDLARSYGIPYIETSAKTRQGVEDAFYTLVREIRQHKLRKLNPPDESGPGCMNCKCVIS%22%7D%7D%2C%22request_options%22%3A%7B%22scoring_strategy%22%3A%22sequence%22%7D%2C%22return_type%22%3A%22polymer_entity%22%7D
+            # see https://search.rcsb.org/#search-example-3
 
             return templates
 
@@ -1554,7 +1575,9 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             Construct alignment with clustal omega
             '''
             pass
+
         # TODO
+        query_pdb(self.target_seq)
         # update state
         self.state['has_alignment'] = True
         pass
@@ -1563,8 +1586,9 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
 class AlignmentGenerator_hhblits(AlignmentGenerator):
     '''
     '''
-    def __init__(self):
-        pass
+    # NOTES
+    # github https://github.com/soedinglab/hh-suite
+    # databases http://wwwuser.gwdg.de/~compbiol/data/hhsuite/databases/hhsuite_dbs/
 
     def get_suggestion(self):
         '''
@@ -1580,8 +1604,12 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
 class AlignmentGenerator_hmmer(AlignmentGenerator):
     '''
     '''
-    def __init__(self):
-        pass
+    # NOTES
+    # github https://github.com/EddyRivasLab/hmmer
+    # documentation https://github.com/EddyRivasLab/hmmer
+    # not sure if I can just used a downloaded PDB sequence database?
+    # if so, these would contain ID_CHAIN nomenclature
+    # is there a HMMER docker container? try out?
 
     def get_suggestion(self):
         '''
