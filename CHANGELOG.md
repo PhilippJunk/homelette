@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Added
+- Added loop modelling routines: `routines.Routine_loopmodel_default` and `Routine_loopmodel_slow`, build on the base class `routines.Routine_loopmodel`
 - Added .gitignore file.
 
 ### Fixed
