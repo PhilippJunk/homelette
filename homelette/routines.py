@@ -24,13 +24,18 @@ Assembling custom pipelines is discussed in :ref:`Tutorial
 Classes
 -------
 
-The following modelling routines are implemented:
+The following standard modelling routines are implemented:
 
     :class:`Routine_automodel_default`
     :class:`Routine_automodel_slow`
     :class:`Routine_altmod_default`
     :class:`Routine_altmod_slow`
     :class:`Routine_promod3`
+
+Modelling routines for loop modelliing:
+
+    :class:`Routine_loopmodel_default`
+    :class:`Routine_loopmodel_slow`
 
 Specifically for the modelling of complex structures, the following routines
 are implemented:
@@ -43,10 +48,13 @@ are implemented:
 -----
 
 '''
+# TODO change modeller.environ to modeller.Environ
+# TODO change modeller.automodel.automodel to AutoModel
 
 __all__ = [
         'Routine_automodel_default', 'Routine_automodel_slow',
         'Routine_altmod_default', 'Routine_altmod_slow', 'Routine_promod3',
+        'Routine_loopmodel_default', 'Routine_loopmodel_slow',
         'Routine_complex_automodel_default', 'Routine_complex_automodel_slow',
         'Routine_complex_altmod_default', 'Routine_complex_altmod_slow']
 
@@ -98,6 +106,9 @@ except ImportError:
 if typing.TYPE_CHECKING:
     from .alignment import Alignment
 
+
+###############################
+# Base class
 
 class Routine():
     '''
@@ -209,6 +220,9 @@ class Routine():
                     '"{}" is required for this functionality, but could '
                     'not be imported.'.format(dependency))
 
+
+###############################
+# Single Target Modelling
 
 class Routine_modeller(Routine):
     '''
@@ -850,6 +864,421 @@ class Routine_promod3(Routine):
 
 
 ###############################
+# Loop Modelling
+
+
+class Routine_loopmodel(Routine_modeller):
+    '''
+    Parent class to all MODELLER loop modelling routines.
+
+    Parameters
+    ----------
+    alignment : Alignment
+        The alignment object that will be used for modelling
+    target : str
+        The identifier of the protein to model
+    templates : Iterable
+        The iterable containing the identifier(s) of the template(s) used for
+        the modelling
+    tag : str
+        The identifier associated with a specific execution of the routine
+
+    Attributes
+    ----------
+    alignment : Alignment
+        The alignment object that will be used for modelling
+    target : str
+        The identifier of the protein to model
+    templates : Iterable
+        The iterable containing the identifier(s) of the template(s) used for
+        the modelling
+    tag : str
+        The identifier associated with a specific execution of the routine
+    routine : str
+        The identifier associated with a specific routine
+    models : list
+        List of generated models
+
+    Raises
+    ------
+    ImportError
+        Unable to import dependencies
+
+    Notes
+    -----
+    Not supposed to be used by users. Implements the model generation procedure
+    that is shared between all different children objects. Children objects
+    only specify different settings for the various modelling and refinement
+    parameters.
+    '''
+    def _generate_models(
+            self, model_class: typing.Type['modeller.automodel.automodel'],
+            n_models: int, n_loop_models:
+            int, library_schedule: typing.Type['modeller.schedule.schedule'],
+            max_var_iterations: int, md_level: typing.Callable,
+            repeat_optimization: int, loop_library_schedule:
+            typing.Type['modeller.schedule.schedule'], loop_max_var_iterations:
+            int, loop_md_level: typing.Callable, n_threads: int,
+            use_hetatms: bool = False) -> None:
+        '''
+        Generate loop models using modeller
+
+        For more information about the different modelling settings, please
+        check the documentation of modeller.
+
+        Parameters
+        ----------
+        model_class : modeller.automodel.automodel
+            The modeller/altmod class used for modelling
+        n_models : int
+            Number of models generated
+        n_loop_models : int
+            Number of loop models generated for each model
+        library_schedule : modeller.schedule.schedule
+            The refinement schedule used for modelling
+        max_var_iterations : int
+            The length of the refinement procedure for modelling
+        md_level : Callable
+            The level of molecular dynamics simulations used to refine the
+            model
+        repeat_optimization : int
+            The number of iterations for the optimization procedure
+        loop_library_schedule : modeller.schedule.schedule
+            The refinement schedule used for loop modelling
+        loop_max_var_iterations : int
+            The lenght of the refinement procedure for loop modelling
+        loop_md_level : Callable
+            The level of molecular dynamics simulations used to refine the loop
+            models
+        n_threads : int
+            Number of threads used for model generation
+        use_hetatms : bool
+            Read heteroatoms from PDB templates
+
+        Returns
+        -------
+        None
+        '''
+        # process alignment for modeller, expects correct annotation
+        self.alignment.select_sequences([self.target] + self.templates)
+        self.alignment.remove_redundant_gaps()
+        self.alignment.write_pir('.tmp.pir')
+
+        # modelling
+        with contextlib.redirect_stdout(None):  # suppress modeller output
+            # prepare inputs
+            env = modeller.environ()
+            if use_hetatms is True:
+                env.io.hetatm = True
+            m = model_class(env, alnfile='.tmp.pir', knowns=self.templates,
+                            sequence=self.target)
+            # set output parameters
+            m.blank_single_chain = False
+            # set modelling parameters
+            m.starting_model = 1
+            m.ending_model = n_models
+            m.library_schedule = library_schedule
+            m.max_var_iterations = max_var_iterations
+            m.md_level = md_level
+            m.repeat_optimization = repeat_optimization
+            # set loop modelling parameters
+            m.loop.starting_model = 1
+            m.loop.ending_model = self.n_loop_models
+            m.loop.library_schedule = loop_library_schedule
+            m.loop.max_var_iterations = loop_max_var_iterations
+            m.loop.md_level = loop_md_level
+            # set up parallelization if multiple threads requested
+            if n_threads > 1:
+                j = modeller.parallel.job()
+                for i in range(n_threads):
+                    j.append(modeller.parallel.local_slave())
+                m.use_parallel_job(j)
+            # perform modelling
+            m.make()
+
+        # capturing output
+        for pdb in glob.glob('{}.BL*.pdb'.format(self.target)):
+            self.models.append(
+                Model(os.path.realpath(os.path.expanduser(pdb)),
+                      self.tag, self.routine))
+
+        # cleaning up
+        self._rename_models()
+        self._remove_files(
+            '{}.B99*.pdb'.format(self.target),
+            '{}.V99*'.format(self.target),
+            '{}.D00*'.format(self.target),
+            '{}.DL*'.format(self.target),
+            '{}.IL*'.format(self.target),
+            '{}.ini'.format(self.target),
+            '{}.lrsr'.format(self.target),
+            '{}.rsr'.format(self.target),
+            '{}.sch'.format(self.target),
+            '.tmp*')
+
+    def create_loopmodel_subclass(self) -> modeller.automodel.LoopModel:
+        '''
+        Create custom loop model class based on self.loop_selections.
+
+        Returns
+        -------
+        modeller.automodel.LoopModel
+        '''
+        loop_selections = self.loop_selections
+
+        class MyLoopModel(modeller.automodel.LoopModel):
+            def select_loop_atoms(self):
+                s = modeller.Selection()
+                for start, end in loop_selections:
+                    s.add(self.residue_range(start, end))
+                return s
+        return MyLoopModel
+
+
+class Routine_loopmodel_default(Routine_loopmodel):
+    '''
+    Class for performing homology loop modelling using the loopmodel class from
+    modeller with a default parameter set.
+
+    Parameters
+    ----------
+    alignment : Alignment
+        The alignment object that will be used for modelling
+    target : str
+        The identifier of the protein to model
+    templates : Iterable
+        The iterable containing the identifier(s) of the template(s) used
+        for the modelling
+    tag : str
+        The identifier associated with a specific execution of the routine
+    loop_selections : Iterable
+        Selection(s) with should be refined with loop modelling, in
+        modeller format (example: [['18:A', '22:A'], ['29:A', '33:A']])
+    n_models : int
+        Number of models generated (default 1)
+    n_loop_models : int
+        Number of loop models generated for each model (default 1)
+
+    Attributes
+    ----------
+    alignment : Alignment
+        The alignment object that will be used for modelling
+    target : str
+        The identifier of the protein to model
+    templates : Iterable
+        The iterable containing the identifier(s) of the template(s) used for
+        the modelling
+    tag : str
+        The identifier associated with a specific execution of the routine
+    loop_selections : Iterable
+        Selection(s) with should be refined with loop modelling
+    n_models : int
+        Number of models generated
+    n_loop_models : int
+        Number of loop models generated for each model
+    routine : str
+        The identifier associated with a specific routine
+    models : list
+        List of models generated by the execution of this routine
+
+    Raises
+    ------
+    ImportError
+        Unable to import dependencies
+
+    Notes
+    -----
+    The following modelling parameters can be set when initializing this
+    Routine object:
+
+    * loop_selections
+    * n_models
+    * n_loop_models
+
+    The following modelling parameters are set for this class:
+
+    +-------------------------+---------------------------------------+
+    | modelling               | value                                 |
+    | parameter               |                                       |
+    +=========================+=======================================+
+    | model_class             | modeller.automodel.LoopModel          |
+    +-------------------------+---------------------------------------+
+    | library_schedule        | modeller.automodel.autosched.normal   |
+    +-------------------------+---------------------------------------+
+    | md_level                | modeller.automodel.refine.very_fast   |
+    +-------------------------+---------------------------------------+
+    | max_var_iterations      | 200                                   |
+    +-------------------------+---------------------------------------+
+    | repeat_optmization      | 1                                     |
+    +-------------------------+---------------------------------------+
+    | loop_library_schedule   | modeller.automodel.autosched.loop     |
+    +-------------------------+---------------------------------------+
+    | loop_md_level           | modeller.automodel.refine.slow        |
+    +-------------------------+---------------------------------------+
+    | loop_max_var_iterations | 200                                   |
+    +-------------------------+---------------------------------------+
+    | n_threads               | 1                                     |
+    +-------------------------+---------------------------------------+
+    '''
+    def __init__(self, alignment: typing.Type['Alignment'], target: str,
+                 templates: typing.Iterable, tag: str, loop_selections:
+                 typing.Iterable, n_models: int = 1, n_loop_models: int =
+                 1) -> None:
+        # init parameters
+        Routine_loopmodel.__init__(self, alignment, target, templates, tag)
+        self.routine = 'loopmodel_default'
+        # modelling parameters
+        self.n_models = n_models
+        self.n_loop_models = n_loop_models
+        self.loop_selections = loop_selections
+
+    def generate_models(self) -> None:
+        '''
+        Generate models with the parameter set loopmodel_default.
+
+        Returns
+        -------
+        None
+        '''
+        # set fixed parameters
+        model_class = self.create_loopmodel_subclass()
+        library_schedule = modeller.automodel.autosched.normal
+        loop_library_schedule = modeller.automodel.autosched.loop
+        max_var_iterations = loop_max_var_iterations = 200
+        md_level = modeller.automodel.refine.very_fast
+        loop_md_level = modeller.automodel.refine.slow
+        repeat_optimization = 1
+        n_threads = 1
+        # run model generation
+        self._generate_models(
+            model_class, self.n_models, self.n_loop_models, library_schedule,
+            max_var_iterations, md_level, repeat_optimization,
+            loop_library_schedule, loop_max_var_iterations, loop_md_level,
+            n_threads)
+
+
+class Routine_loopmodel_slow(Routine_loopmodel):
+    '''
+    Class for performing homology loop modelling using the loopmodel class from
+    modeller with a slow parameter set.
+
+    Parameters
+    ----------
+    alignment : Alignment
+        The alignment object that will be used for modelling
+    target : str
+        The identifier of the protein to model
+    templates : Iterable
+        The iterable containing the identifier(s) of the template(s) used
+        for the modelling
+    tag : str
+        The identifier associated with a specific execution of the routine
+    loop_selections : Iterable
+        Selection(s) with should be refined with loop modelling, in
+        modeller format (example: [['18:A', '22:A'], ['29:A', '33:A']])
+    n_models : int
+        Number of models generated (default 1)
+    n_loop_models : int
+        Number of loop models generated for each model (default 1)
+
+    Attributes
+    ----------
+    alignment : Alignment
+        The alignment object that will be used for modelling
+    target : str
+        The identifier of the protein to model
+    templates : Iterable
+        The iterable containing the identifier(s) of the template(s) used for
+        the modelling
+    tag : str
+        The identifier associated with a specific execution of the routine
+    loop_selections : Iterable
+        Selection(s) with should be refined with loop modelling
+    n_models : int
+        Number of models generated
+    n_loop_models : int
+        Number of loop models generated for each model
+    routine : str
+        The identifier associated with a specific routine
+    models : list
+        List of models generated by the execution of this routine
+
+    Raises
+    ------
+    ImportError
+        Unable to import dependencies
+
+    Notes
+    -----
+    The following modelling parameters can be set when initializing this
+    Routine object:
+
+    * loop_selections
+    * n_models
+    * n_loop_models
+
+    The following modelling parameters are set for this class:
+
+    +-------------------------+---------------------------------------+
+    | modelling               | value                                 |
+    | parameter               |                                       |
+    +=========================+=======================================+
+    | model_class             | modeller.automodel.LoopModel          |
+    +-------------------------+---------------------------------------+
+    | library_schedule        | modeller.automodel.autosched.slow     |
+    +-------------------------+---------------------------------------+
+    | md_level                | modeller.automodel.refine.very_slow   |
+    +-------------------------+---------------------------------------+
+    | max_var_iterations      | 400                                   |
+    +-------------------------+---------------------------------------+
+    | repeat_optmization      | 3                                     |
+    +-------------------------+---------------------------------------+
+    | loop_library_schedule   | modeller.automodel.autosched.slow     |
+    +-------------------------+---------------------------------------+
+    | loop_md_level           | modeller.automodel.refine.very_slow   |
+    +-------------------------+---------------------------------------+
+    | loop_max_var_iterations | 400                                   |
+    +-------------------------+---------------------------------------+
+    | n_threads               | 1                                     |
+    +-------------------------+---------------------------------------+
+    '''
+    def __init__(self, alignment: typing.Type['Alignment'], target: str,
+                 templates: typing.Iterable, tag: str, loop_selections:
+                 typing.Iterable, n_models: int = 1, n_loop_models: int =
+                 1) -> None:
+        # init parameters
+        Routine_loopmodel.__init__(self, alignment, target, templates, tag)
+        self.routine = 'loopmodel_slow'
+        # modelling parameters
+        self.n_models = n_models
+        self.n_loop_models = n_loop_models
+        self.loop_selections = loop_selections
+
+    def generate_models(self) -> None:
+        '''
+        Generate models with the parameter set loopmodel_slow.
+
+        Returns
+        -------
+        None
+        '''
+        # set fixed parameters
+        model_class = self.create_loopmodel_subclass()
+        library_schedule = loop_library_schedule = (
+            modeller.automodel.autosched.slow)
+        max_var_iterations = loop_max_var_iterations = 400
+        md_level = loop_md_level = modeller.automodel.refine.very_slow
+        repeat_optimization = 3
+        n_threads = 1
+        # run model generation
+        self._generate_models(
+            model_class, self.n_models, self.n_loop_models, library_schedule,
+            max_var_iterations, md_level, repeat_optimization,
+            loop_library_schedule, loop_max_var_iterations, loop_md_level,
+            n_threads)
+
+
+###############################
 # Complex Modelling
 
 # define custom modelling classes
@@ -955,7 +1384,7 @@ class Routine_complex_automodel_default(Routine_modeller):
     | modelling             | value                                     |
     | parameter             |                                           |
     +=======================+===========================================+
-    | model_class           | modeller.automodel.autmodel               |
+    | model_class           | modeller.automodel.automodel              |
     +-----------------------+-------------------------------------------+
     | library_schedule      | modeller.automodel.autosched.normal       |
     +-----------------------+-------------------------------------------+
@@ -1060,7 +1489,7 @@ class Routine_complex_automodel_slow(Routine_modeller):
     +-----------------------+---------------------------------------+
     | library_schedule      | modeller.automodel.autosched.slow     |
     +-----------------------+---------------------------------------+
-    | md_level              | modeller.autmodel.refine.very_slow    |
+    | md_level              | modeller.automodel.refine.very_slow   |
     +-----------------------+---------------------------------------+
     | max_var_iterations    | 400                                   |
     +-----------------------+---------------------------------------+
