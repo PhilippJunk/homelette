@@ -24,13 +24,18 @@ Assembling custom pipelines is discussed in :ref:`Tutorial
 Classes
 -------
 
-The following modelling routines are implemented:
+The following standard modelling routines are implemented:
 
     :class:`Routine_automodel_default`
     :class:`Routine_automodel_slow`
     :class:`Routine_altmod_default`
     :class:`Routine_altmod_slow`
     :class:`Routine_promod3`
+
+Modelling routines for loop modelliing:
+
+    :class:`Routine_loopmodel_default`
+    :class:`Routine_loopmodel_slow`
 
 Specifically for the modelling of complex structures, the following routines
 are implemented:
@@ -47,6 +52,7 @@ are implemented:
 __all__ = [
         'Routine_automodel_default', 'Routine_automodel_slow',
         'Routine_altmod_default', 'Routine_altmod_slow', 'Routine_promod3',
+        'Routine_loopmodel_default', 'Routine_loopmodel_slow',
         'Routine_complex_automodel_default', 'Routine_complex_automodel_slow',
         'Routine_complex_altmod_default', 'Routine_complex_altmod_slow']
 
@@ -905,13 +911,18 @@ class Routine_loopmodel(Routine_modeller):
     '''
     def _generate_models(
             self, model_class: typing.Type['modeller.automodel.automodel'],
-            loop_selections: typing.Iterable, n_models: int, n_loop_models:
+            n_models: int, n_loop_models:
             int, library_schedule: typing.Type['modeller.schedule.schedule'],
             max_var_iterations: int, md_level: typing.Callable,
             repeat_optimization: int, loop_library_schedule:
             typing.Type['modeller.schedule.schedule'], loop_max_var_iterations:
             int, loop_md_level: typing.Callable, n_threads: int,
             use_hetatms: bool = False) -> None:
+        # TODO remove n_threads from loop modelling, because does not work?
+        # TODO alternative idea: make modelling either work with
+        # loop_selections and n_thread=1, or on top level defined LoopModel sub
+        # class from the user with an arbitary number of threads
+        # would that work?
         '''
         Generate loop models using modeller
 
@@ -922,9 +933,6 @@ class Routine_loopmodel(Routine_modeller):
         ----------
         model_class : modeller.automodel.automodel
             The modeller/altmod class used for modelling
-        loop_selections : Iterable
-            Selection(s) with should be refined with loop modelling, in
-            modeller format [['18:A', '22:A'], ['29:A', '33:A']]
         n_models : int
             Number of models generated
         n_loop_models : int
@@ -960,15 +968,13 @@ class Routine_loopmodel(Routine_modeller):
         self.alignment.write_pir('.tmp.pir')
 
         # define custom loop modelling class for specific selection
-        class MyLoop(model_class):
+        #class MyLoop(model_class):
             # set residues that will be refined by loop modelling
-            def select_loop_atoms(self):
-                # DONE find out how to set multiple ranges
-                # TODO find out if selection actually works like that?
-                s = modeller.Selection()
-                for start, end in loop_selections:
-                    s.add(self.residue_range(start, end))
-                return s
+            #def select_loop_atoms(self):
+                #s = modeller.Selection()
+                #for start, end in loop_selections:
+                    #s.add(self.residue_range(start, end))
+                #return s
 
         # modelling
         with contextlib.redirect_stdout(None):  # suppress modeller output
@@ -976,8 +982,8 @@ class Routine_loopmodel(Routine_modeller):
             env = modeller.environ()
             if use_hetatms is True:
                 env.io.hetatm = True
-            m = MyLoop(env, alnfile='.tmp.pir', knowns=self.templates,
-                       sequence=self.target)
+            m = model_class(env, alnfile='.tmp.pir', knowns=self.templates,
+                            sequence=self.target)
             # set output parameters
             m.blank_single_chain = False
             # set modelling parameters
@@ -1021,6 +1027,19 @@ class Routine_loopmodel(Routine_modeller):
             '{}.rsr'.format(self.target),
             '{}.sch'.format(self.target),
             '.tmp*')
+
+    def create_loopmodel_subclass(self):
+        '''
+        '''  # TODO
+        # DONE find out how to set multiple ranges
+        # TODO find out if selection actually works like that?
+        class MyLoopModel(modeller.automodel.LoopModel):
+            def select_loop_atoms(self):
+                s = modeller.Selection()
+                for start, end in self.loop_selections:
+                    s.add(self.residue_range(start, end))
+                return s
+        return MyLoopModel
 
 
 class Routine_loopmodel_default(Routine_loopmodel):
@@ -1135,7 +1154,7 @@ class Routine_loopmodel_default(Routine_loopmodel):
         # set fixed parameters
         # TODO check if these parameters are actually standard for loop
         # modelling?!
-        model_class = modeller.automodel.LoopModel
+        model_class = self.create_loopmodel_subclass()
         library_schedule = loop_library_schedule = (
             modeller.automodel.autosched.normal)
         max_var_iterations = loop_max_var_iterations = 200
@@ -1143,13 +1162,13 @@ class Routine_loopmodel_default(Routine_loopmodel):
         repeat_optimization = 1
         # run model generation
         self._generate_models(
-            model_class, self.loop_selections, self.n_models,
-            self.n_loop_models, library_schedule, max_var_iterations, md_level,
-            repeat_optimization, loop_library_schedule,
-            loop_max_var_iterations, loop_md_level, self.n_threads)
+            model_class, self.n_models, self.n_loop_models, library_schedule,
+            max_var_iterations, md_level, repeat_optimization,
+            loop_library_schedule, loop_max_var_iterations, loop_md_level,
+            self.n_threads)
 
 
-class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
+class Routine_loopmodel_slow(Routine_loopmodel):
     '''
     Class for performing homology loop modelling using the loopmodel class from
     modeller with a slow parameter set.
@@ -1259,7 +1278,7 @@ class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
         None
         '''
         # set fixed parameters
-        model_class = modeller.automodel.LoopModel
+        model_class = self.create_loopmodel_subclass()
         library_schedule = loop_library_schedule = (
             modeller.automodel.autosched.slow)
         max_var_iterations = loop_max_var_iterations = 400
@@ -1267,10 +1286,10 @@ class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
         repeat_optimization = 3
         # run model generation
         self._generate_models(
-            model_class, self.loop_selections, self.n_models,
-            self.n_loop_models, library_schedule, max_var_iterations, md_level,
-            repeat_optimization, loop_library_schedule,
-            loop_max_var_iterations, loop_md_level, self.n_threads)
+            model_class, self.n_models, self.n_loop_models, library_schedule,
+            max_var_iterations, md_level, repeat_optimization,
+            loop_library_schedule, loop_max_var_iterations, loop_md_level,
+            self.n_threads)
 
 
 ###############################
