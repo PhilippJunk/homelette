@@ -922,7 +922,7 @@ class Routine_loopmodel(Routine_modeller):
         ----------
         model_class : modeller.automodel.automodel
             The modeller/altmod class used for modelling
-        loop_selection : Iterable
+        loop_selections : Iterable
             Selection(s) with should be refined with loop modelling, in
             modeller format [['18:A', '22:A'], ['29:A', '33:A']]
         n_models : int
@@ -966,7 +966,7 @@ class Routine_loopmodel(Routine_modeller):
                 # DONE find out how to set multiple ranges
                 # TODO find out if selection actually works like that?
                 s = modeller.Selection()
-                for start, end in self.loop_selection:
+                for start, end in loop_selections:
                     s.add(self.residue_range(start, end))
                 return s
 
@@ -1039,7 +1039,7 @@ class Routine_loopmodel_default(Routine_loopmodel):
         for the modelling
     tag : str
         The identifier associated with a specific execution of the routine
-    loop_selection : Iterable
+    loop_selections : Iterable
         Selection(s) with should be refined with loop modelling, in
         modeller format (example: [['18:A', '22:A'], ['29:A', '33:A']])
     n_threads : int
@@ -1060,7 +1060,7 @@ class Routine_loopmodel_default(Routine_loopmodel):
         the modelling
     tag : str
         The identifier associated with a specific execution of the routine
-    loop_selection : Iterable
+    loop_selections : Iterable
         Selection(s) with should be refined with loop modelling
     n_threads : int
         Number of threads used for model generation
@@ -1083,7 +1083,7 @@ class Routine_loopmodel_default(Routine_loopmodel):
     The following modelling parameters can be set when initializing this
     Routine object:
 
-    * loop_selection
+    * loop_selections
     * n_models
     * n_loop_models
     * n_threads
@@ -1112,7 +1112,7 @@ class Routine_loopmodel_default(Routine_loopmodel):
     +-------------------------+---------------------------------------+
     '''
     def __init__(self, alignment: typing.Type['Alignment'], target: str,
-                 templates: typing.Iterable, tag: str, loop_selection:
+                 templates: typing.Iterable, tag: str, loop_selections:
                  typing.Iterable, n_threads: int = 1, n_models: int =
                  1, n_loop_models: int = 1) -> None:
         # init parameters
@@ -1121,8 +1121,8 @@ class Routine_loopmodel_default(Routine_loopmodel):
         # modelling parameters
         self.n_threads = n_threads
         self.n_models = n_models
-        self._n_loop_models = n_loop_models
-        self.loop_selection = loop_selection
+        self.n_loop_models = n_loop_models
+        self.loop_selections = loop_selections
 
     def generate_models(self) -> None:
         '''
@@ -1135,7 +1135,7 @@ class Routine_loopmodel_default(Routine_loopmodel):
         # set fixed parameters
         # TODO check if these parameters are actually standard for loop
         # modelling?!
-        model_class = modeller.autmodel.LoopModel
+        model_class = modeller.automodel.LoopModel
         library_schedule = loop_library_schedule = (
             modeller.automodel.autosched.normal)
         max_var_iterations = loop_max_var_iterations = 200
@@ -1143,7 +1143,7 @@ class Routine_loopmodel_default(Routine_loopmodel):
         repeat_optimization = 1
         # run model generation
         self._generate_models(
-            model_class, self.loop_selection, self.n_models,
+            model_class, self.loop_selections, self.n_models,
             self.n_loop_models, library_schedule, max_var_iterations, md_level,
             repeat_optimization, loop_library_schedule,
             loop_max_var_iterations, loop_md_level, self.n_threads)
@@ -1165,7 +1165,7 @@ class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
         for the modelling
     tag : str
         The identifier associated with a specific execution of the routine
-    loop_selection : Iterable
+    loop_selections : Iterable
         Selection(s) with should be refined with loop modelling, in
         modeller format (example: [['18:A', '22:A'], ['29:A', '33:A']])
     n_threads : int
@@ -1186,7 +1186,7 @@ class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
         the modelling
     tag : str
         The identifier associated with a specific execution of the routine
-    loop_selection : Iterable
+    loop_selections : Iterable
         Selection(s) with should be refined with loop modelling
     n_threads : int
         Number of threads used for model generation
@@ -1209,7 +1209,7 @@ class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
     The following modelling parameters can be set when initializing this
     Routine object:
 
-    * loop_selection
+    * loop_selections
     * n_models
     * n_loop_models
     * n_threads
@@ -1238,7 +1238,7 @@ class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
     +-------------------------+---------------------------------------+
     '''
     def __init__(self, alignment: typing.Type['Alignment'], target: str,
-                 templates: typing.Iterable, tag: str, loop_selection:
+                 templates: typing.Iterable, tag: str, loop_selections:
                  typing.Iterable, n_threads: int = 1, n_models: int =
                  1, n_loop_models: int = 1) -> None:
         # init parameters
@@ -1247,8 +1247,8 @@ class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
         # modelling parameters
         self.n_threads = n_threads
         self.n_models = n_models
-        self._n_loop_models = n_loop_models
-        self.loop_selection = loop_selection
+        self.n_loop_models = n_loop_models
+        self.loop_selections = loop_selections
 
     def generate_models(self) -> None:
         '''
@@ -1259,7 +1259,7 @@ class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
         None
         '''
         # set fixed parameters
-        model_class = modeller.autmodel.LoopModel
+        model_class = modeller.automodel.LoopModel
         library_schedule = loop_library_schedule = (
             modeller.automodel.autosched.slow)
         max_var_iterations = loop_max_var_iterations = 400
@@ -1267,7 +1267,7 @@ class Routine_loopmodelling_automodel_slow(Routine_loopmodel):
         repeat_optimization = 3
         # run model generation
         self._generate_models(
-            model_class, self.loop_selection, self.n_models,
+            model_class, self.loop_selections, self.n_models,
             self.n_loop_models, library_schedule, max_var_iterations, md_level,
             repeat_optimization, loop_library_schedule,
             loop_max_var_iterations, loop_md_level, self.n_threads)
@@ -1379,7 +1379,7 @@ class Routine_complex_automodel_default(Routine_modeller):
     | modelling             | value                                     |
     | parameter             |                                           |
     +=======================+===========================================+
-    | model_class           | modeller.automodel.autmodel               |
+    | model_class           | modeller.automodel.automodel              |
     +-----------------------+-------------------------------------------+
     | library_schedule      | modeller.automodel.autosched.normal       |
     +-----------------------+-------------------------------------------+
@@ -1484,7 +1484,7 @@ class Routine_complex_automodel_slow(Routine_modeller):
     +-----------------------+---------------------------------------+
     | library_schedule      | modeller.automodel.autosched.slow     |
     +-----------------------+---------------------------------------+
-    | md_level              | modeller.autmodel.refine.very_slow    |
+    | md_level              | modeller.automodel.refine.very_slow   |
     +-----------------------+---------------------------------------+
     | max_var_iterations    | 400                                   |
     +-----------------------+---------------------------------------+
