@@ -48,6 +48,8 @@ are implemented:
 -----
 
 '''
+# TODO change modeller.environ to modeller.Environ
+# TODO change modeller.automodel.automodel to AutoModel
 
 __all__ = [
         'Routine_automodel_default', 'Routine_automodel_slow',
@@ -1022,8 +1024,6 @@ class Routine_loopmodel(Routine_modeller):
         -------
         modeller.automodel.LoopModel
         '''
-        # DONE find out how to set multiple ranges
-        # TODO find out if selection actually works like that?
         loop_selections = self.loop_selections
 
         class MyLoopModel(modeller.automodel.LoopModel):
@@ -1111,9 +1111,9 @@ class Routine_loopmodel_default(Routine_loopmodel):
     +-------------------------+---------------------------------------+
     | repeat_optmization      | 1                                     |
     +-------------------------+---------------------------------------+
-    | loop_library_schedule   | modeller.automodel.autosched.normal   |
+    | loop_library_schedule   | modeller.automodel.autosched.loop     |
     +-------------------------+---------------------------------------+
-    | loop_md_level           | modeller.automodel.refine.very_fast   |
+    | loop_md_level           | modeller.automodel.refine.slow        |
     +-------------------------+---------------------------------------+
     | loop_max_var_iterations | 200                                   |
     +-------------------------+---------------------------------------+
@@ -1141,13 +1141,12 @@ class Routine_loopmodel_default(Routine_loopmodel):
         None
         '''
         # set fixed parameters
-        # TODO check if these parameters are actually standard for loop
-        # modelling?!
         model_class = self.create_loopmodel_subclass()
-        library_schedule = loop_library_schedule = (
-            modeller.automodel.autosched.normal)
+        library_schedule = modeller.automodel.autosched.normal
+        loop_library_schedule = modeller.automodel.autosched.loop
         max_var_iterations = loop_max_var_iterations = 200
-        md_level = loop_md_level = modeller.automodel.refine.very_fast
+        md_level = modeller.automodel.refine.very_fast
+        loop_md_level = modeller.automodel.refine.slow
         repeat_optimization = 1
         n_threads = 1
         # run model generation
