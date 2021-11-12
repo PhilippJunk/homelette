@@ -193,6 +193,16 @@ class PdbObject:
              for chainID in residues.chainID.unique()])
         return '/'.join(sequences).upper()
 
+    def get_chains(self) -> list:
+        '''
+        Extract all chains present in the PDB.
+
+        Returns
+        -------
+        list
+        '''
+        return sorted(list(set([line[21] for line in self.lines])))
+
     def transform_extract_chain(self, chain) -> 'PdbObject':
         '''
         Extract chain from PDB.
