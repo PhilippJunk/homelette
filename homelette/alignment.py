@@ -1268,7 +1268,7 @@ class AlignmentGenerator(abc.ABC):
         self.alignment.select_sequences(selection)
 
     # TODO name of the function? download_templates?
-    def get_pdbs(self, verbose: bool = True) -> None:
+    def get_pdbs(self, verbose: bool = True, pdb_format: str = 'auto') -> None:
         '''
         Downloads and processes templates present in alignment.
 
@@ -1276,45 +1276,73 @@ class AlignmentGenerator(abc.ABC):
         ----------
         verbose : bool
             Explain what operations are performed
+        pdb_format : str
+            Format of PDB identifiers in alignment (default auto)
 
         Raises
         ------
         RuntimeError
             Alignment has not been generated yet
+
+
+        Notes
+        -----
+        pdb_format tells the function how to parse the template identifiers in
+        the alignment:
+
+        * auto: Automatic guess for pdb_format
+        * chain: Sequences are named in the format PDBID_CHAIN (i.e. 4G0N_A)
+        * entity: Sequences are named in the format PDBID_ENTITY (i.e. 4G0N_1)
+        * identifier: Sequences are named only be their PDB identifier (i.e.
+        4G0N)
         '''
-        # TODO all three methods I am considering have to be forced to
-        # implement a unified interface to PDBID_CHAIN
+        # check state
         self._check_state(has_alignment=True, is_processed=False)
 
-        # Initialize template dir
-        # TODO replace output folder with self.template_location
-        # TODO replace templates with automatic retrieval from self.alignment
-        if verbose:
-            print('Checking template dir...')
-        if not os.path.exists(self.template_location):
-            if verbose:
-                print('Template dir not found...')
-            os.makedirs(self.template_location, exist_ok=True)
-            if verbose:
-                print(f'New template dir created at {self.template_location}!'
-                      '\n')
-        else:
-            if verbose:
-                print('Template dir found!\n')
-
         # Helper functions
-        def parse_templates(templates: typing.Iterable) -> dict:
+        def parse_templates(templates: typing.Iterable, pdb_format) -> dict:
             '''
             Transforms list of templates to a dictionary structure
-            {'PDB_ID': chains, ..}
+            {'PDB_ID': chains, ..} depending on the pdb_format
             '''
             out = {}
             for template in templates:
-                pdbid, chain = template.split('_')
+                # get PDBID
+                pdbid = template[0:4]
+
+                # include in out dict
                 if pdbid not in out.keys():
-                    out[pdbid] = list(chain)
-                else:
-                    out[pdbid].append(chain)
+                    out[pdbid] = list()
+
+                # include chains if pdb_format == chain
+                if pdb_format == 'chain':
+                    out[pdbid].append(template[5])
+
+            return out
+
+        def parse_alignment(alignment: Alignment, templates: typing.Iterable,
+                            pdb_format) -> dict:
+            '''
+            '''
+            out = {}
+            for template in templates:
+                # get PDBID
+                pdbid = template[0:4]
+
+                # include in out dict
+                if pdbid not in out.keys():
+                    out[pdbid] = list()
+
+                # collect information about alignment entry
+                aln_entry = {
+                        'template': template,
+                        'sequence': alignment.sequences[template],
+                        }
+                if pdb_format == 'chain':
+                    aln_entry['chain'] = template[5]
+
+                out[pdbid].append(aln_entry)
+
             return out
 
         def adjust_template_seq(seq_alignment: str,
@@ -1342,12 +1370,90 @@ class AlignmentGenerator(abc.ABC):
 
             return seq_template_padded
 
+        # check pdb_format
         templates = [template for template in self.alignment.sequences.keys()
                      if template != self.target]
-        templates_parsed = parse_templates(templates)
+        if pdb_format == 'auto':
+            if verbose:
+                print('Guessing template naming format...')
+            # try to guess template naming format
+            r_identifier = re.compile(r'^[A-Za-z0-9]{4}')
+            r_chain = re.compile(r'^[A-Za-z0-9]{4}[\W_][A-Za-z]')
+            r_entity = re.compile(r'^[A-Za-z0-9]{4}[\W_][0-9]')
+            if all([re.fullmatch(r_identifier, template) for template in
+                   templates]):
+                pdb_format = 'identifier'
+            elif all([re.fullmatch(r_chain, template) for template in
+                     templates]):
+                pdb_format = 'chain'
+            elif all([re.fullmatch(r_entity, template) for template in
+                     templates]):
+                pdb_format = 'entity'
+            else:
+                raise ValueError(
+                    'Unable to guess pdb_format from template names. Please '
+                    'set pdb_format manually and make sure all template names '
+                    'in the alignment follow one of the proposed naming '
+                    'schemes.')
+            if verbose:
+                print(f'Template naming format guessed: {pdb_format}!\n')
+        elif pdb_format not in ['chain', 'identifier', 'entity']:
+            raise ValueError(
+                f'Invalid value to pdb_format: {pdb_format}\nHas to be one of '
+                f'"auto", "chain", "entity", "identifier".')
+
+        # Initialize template dir
+        if verbose:
+            print('Checking template dir...')
+        if not os.path.exists(self.template_location):
+            if verbose:
+                print('Template dir not found...')
+            os.makedirs(self.template_location, exist_ok=True)
+            if verbose:
+                print(f'New template dir created at\n'
+                      f'"{self.template_location}"!'
+                      '\n')
+        else:
+            if verbose:
+                print('Template dir found!\n')
+
+        templates_parsed = parse_alignment(self.alignment, templates,
+                                           pdb_format)
+        print(templates_parsed)
 
         if verbose:
             print('Processing templates:\n')
+
+        for pdbid in templates_parsed:
+            # download template
+            if verbose:
+                print(f'{pdbid} downloading from PDB...')
+            pdb = pdb_io.download_pdb(pdbid)
+            if verbose:
+                print(f'{pdbid} downloaded!')
+            # get chains depending on pdb_format
+            if pdb_format == 'chain':
+                chains = templates_parsed[pdbid]
+            else:
+                chains = pdb.get_chains()
+            for chain in chains:
+                pdb_chain = pdb.transform_extract_chain(chain)
+                if verbose:
+                    print(f'{pdbid}_{chain}: Chain extracted!')
+                # TODO
+                # what to do with the alignment??
+                # Currently, I dont know the correct identifier in the
+                # alignment because it could be anything...
+                # maybe I need to adapt the data structure returned from
+                # parse_templates?
+                # instead of {pdbid: chains, ...}
+                # {alignment_id : {pdbid, chains, ???}
+                # but the issue there is that i might have multiple sequences
+                # in the alignment, from different chains, that might not be
+                # identical. So, I need to account for that...
+                # {pdbid: [{alignmentid: '', chain: '', sequence: ''}, {...}]}
+                # I think that could work!
+                # TODO write loop with adjusted output from parse_alignment
 
         for pdbid in templates_parsed:
             # download template
@@ -1511,6 +1617,9 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
               "return_type": "polymer_instance"
             }}
             '''
+            # NOTES: NEW PLAN
+            # Query for entities, get sequences, download PDB and check for
+            # each chain whether chain fits to sequence, if yes, include
             # NOTES
             # return type plays a big role
             #   - polymer_instance gives separate chains (3NY5.A, 3NY5.B, ...)
@@ -1583,13 +1692,12 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
         pass
 
 
+# NOTES
+# github https://github.com/soedinglab/hh-suite
+# databases http://wwwuser.gwdg.de/~compbiol/data/hhsuite/databases/hhsuite_dbs
 class AlignmentGenerator_hhblits(AlignmentGenerator):
     '''
     '''
-    # NOTES
-    # github https://github.com/soedinglab/hh-suite
-    # databases http://wwwuser.gwdg.de/~compbiol/data/hhsuite/databases/hhsuite_dbs/
-
     def get_suggestion(self):
         '''
         '''  # TODO
