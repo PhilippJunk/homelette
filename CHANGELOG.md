@@ -12,6 +12,7 @@ potential templates and generating alignments using different methods:
  - `alignment.Alignment.calc_coverage`
  - `alignment.Alignment.calc_coverage_target`
  - `alignment.Alignment.calc_pairwise_coverage_all`
+- `pdb_io` submodule for pooling functionality that is internally used to handle PDB files.
 - Added .gitignore file.
 
 ### Fixed
