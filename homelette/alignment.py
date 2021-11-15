@@ -1545,14 +1545,16 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
     sequence : str
         Target sequence
     '''
-    def get_suggestion(self):
+    def get_suggestion(self, seq_id_cutoff: float = 0.5, min_length: int = 30,
+                       verbose=True) -> None:
         '''
         '''  # TODO
         # check state
         self._check_state(has_alignment=False, is_processed=False)
 
         # Helper functions
-        def query_pdb(sequence: str, seq_id: float = 0.5) -> list:
+        def query_pdb(sequence: str, seq_id_cutoff: float = 0.5,
+                      min_length: int = 30) -> list:
             '''
             Queries sequence with sequence identity cutoff against the PDB data
             base.
@@ -1561,8 +1563,10 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             ----------
             sequence : str
                 Sequence as string
-            seq_id : float
+            seq_id_cutoff : float
                 Sequence identity cutoff, between 0 and 1
+            min_length : int
+                Minimal length for potential templates
 
             Returns
             -------
@@ -1583,7 +1587,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                     "service": "sequence",
                     "parameters": {{
                       "evalue_cutoff": 1,
-                      "identity_cutoff": {seq_id},
+                      "identity_cutoff": {seq_id_cutoff},
                       "target": "pdb_protein_sequence",
                       "value": "{sequence}"
                     }}
@@ -1605,7 +1609,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                       "attribute": "entity_poly.rcsb_sample_sequence_length",
                       "operator": "greater_or_equal",
                       "negation": false,
-                      "value": 30
+                      "value": {min_length}
                     }}
                   }}
                 ]
@@ -1614,7 +1618,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                 "return_all_hits": true,
                 "scoring_strategy": "sequence"
               }},
-              "return_type": "polymer_instance"
+              "return_type": "polymer_entity"
             }}
             '''
             # NOTES: NEW PLAN
@@ -1639,10 +1643,6 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             # the query sequence to PDB sequences
             # https://github.com/soedinglab/MMseqs2
 
-            # NOTES different options
-            # A: take alignment from instances, or
-            # B: re-align with clustal?
-
             # format query
             # remove whitespaces
             query = re.sub(r'\s\s+', '', query)
@@ -1662,11 +1662,60 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                             f'Unknown URL status: expected 200 or 204, got '
                             f'{response.status}')
 
-            # extract PDB ids and chains from response
-            templates = list()
+            # extract potential templates and alignment from response
+            pairwise_alns = list()
+            print(response_decoded)
             for hit in response_decoded['result_set']:
-                template = hit['identifier'].replace('.', '_')
-                templates.append(template)
+                template = hit['identifier']
+                print(template)
+                seq_target = (
+                        hit['services'][0]['nodes'][0]['match_context'][0]
+                        ['query_aligned_seq'])
+                seq_template = (
+                        hit['services'][0]['nodes'][0]['match_context'][0]
+                        ['subject_aligned_seq'])
+                # The PDB can return a target sequence that is cropped on the
+                # ends if there are no residues to align to (WHY??)
+                # Make sure that there absolutly are not any changes introduced
+                # somewhere inside the sequence
+                if not re.fullmatch(fr'\w*{seq_target.replace("-", "")}\w*',
+                                    sequence):
+                    templates = [h['identifier'] for h in
+                                 response_decoded['result_set']]
+                    raise RuntimeError(
+                            f"The PDB alignment generation seems to have "
+                            f"introduced deletions/insertions in your query."
+                            f"I don't know why, or how. This error should "
+                            f"never have been called...\n"
+                            f"Query Sequence: {sequence}\n"
+                            f"Sequence from PDB: "
+                            f"{seq_template.replace('-','')}\n"
+                            f"Please find another way to generate your "
+                            f"alignment and identify templates.\nThe "
+                            f"following templates were proposed by the PDB "
+                            f"for your query sequence: {templates}"
+                            )
+
+                # Then restore the original sequence length for the target
+                # sequence and introduce gaps in the alignment for the target
+                # TODO
+
+                # TODO
+                # WTF more wtfs!!
+                # apparenty, the PDB alignment returned does not return the
+                # full alignment, but only the "relevant" part for the
+                # query sequence. that means, that my whole replacement
+                # strategy with downloading the tempalte, and then checking for
+                # the full sequence, won't work.
+                # Unless I come up with a really really really smart idea, its
+                # back to MSA with clustalo, I guess?
+                # TODO
+
+                aln = Alignment(None)
+                aln.sequences = {
+                    self.target: seq_target,
+                    template: seq_template}
+                pairwise_alns.append(aln)
 
             # TODO consider that the PDB does not only return pdbids, but also
             # pairwise alignments of target sequence vs template sequence.
@@ -1677,19 +1726,94 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             # ['query_aligned_seq'] and ['subject_aligned_seq']
             # see https://search.rcsb.org/#search-example-3
 
-            return templates
+            return pairwise_alns
 
-        def construct_alignment():
+        def combine_alns(pairwise_alns, target=self.target):
             '''
-            Construct alignment with clustal omega
+            Construct combined alignment from pairwise alignments
             '''
-            pass
+            # algorithm:
+            # iterate over target seq
+            # if there is gap in one of the alignments at that position, insert
+            # gap, and then progress one position for all alignment where the
+            # gap was (and transfer target seq)
 
-        # TODO
-        query_pdb(self.target_seq)
+            # reformat inputs
+            alignments = [dict(**aln.sequences, index=0)
+                          for aln in pairwise_alns]
+            templates = [
+                    names[names not in [target, 'index']] for names in
+                    [list(aln.keys()) for aln in alignments]]
+            print(alignments)
+            print(templates)
+
+            # initialize output alignment
+            out = Alignment()
+            out.sequences = {target: ''}
+            out.sequences.update({template: '' for template in templates})
+
+            # process alignment
+            while True:
+                target_res = list()
+                # check current position in all alignments
+                for aln in alignments:
+                    try:
+                        if aln[target][aln['index']] != '-':
+                            target_res.append(True)
+                        else:
+                            target_res.append(False)
+                    except IndexError:
+                        target_res.append(False)
+
+                # add to target sequence
+                if all(target_res):
+                    # target: append current index to output
+                    pos = alignments[0][target][alignments[0]['index']]
+                    out.sequences[target] += pos
+                    # templates: append current index to output, increment
+                    # index
+                    for aln, template in zip(alignments, templates):
+                        out.sequences[template] += aln[template][aln['index']]
+                        aln['index'] += 1
+
+                # if there are only gaps: break
+                if not any(target_res):
+                    print('break')
+                    break
+
+                # if there are gaps in some target seqs
+                else:
+                    # make gap in target seq
+                    out.sequences[target] += '-'
+                    # append to templates where in target was a gap, increment
+                    # index
+                    for aln, template, increment in zip(
+                            alignments, templates,
+                            [not x for x in target_res]):
+                        if increment:
+                            out.sequences[template] += (
+                                aln[template][aln['index']])
+                            aln['index'] += 1
+
+            # return combined alignment
+            return out
+
+        # send query
+        pairwise_alns = query_pdb(self.target_seq, seq_id_cutoff, min_length)
+        if len(pairwise_alns) == 0:
+            print(f'Query found no potential templates with current '
+                  f'parameters.\nseq_id_cutoff:\t{seq_id_cutoff}\n'
+                  f'min_length:\t{min_length}')
+            return None
+        # combine alignments
+        self.alignment = combine_alns(pairwise_alns)
         # update state
         self.state['has_alignment'] = True
-        pass
+        # call show_suggestion
+        if verbose:
+            print('Query successful.\nThe following sequences have been '
+                  'found.')
+            self.show_suggestion()
 
 
 # NOTES
