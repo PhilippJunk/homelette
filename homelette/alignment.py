@@ -35,6 +35,8 @@ import itertools
 import json
 import os.path
 import re
+import subprocess
+import time
 import typing
 import urllib.error
 import urllib.parse
@@ -1419,7 +1421,6 @@ class AlignmentGenerator(abc.ABC):
 
         templates_parsed = parse_alignment(self.alignment, templates,
                                            pdb_format)
-        print(templates_parsed)
 
         if verbose:
             print('Processing templates:\n')
@@ -1440,6 +1441,7 @@ class AlignmentGenerator(abc.ABC):
                 pdb_chain = pdb.transform_extract_chain(chain)
                 if verbose:
                     print(f'{pdbid}_{chain}: Chain extracted!')
+                # TODO TODO TODO perform extraction!!!
                 # TODO
                 # what to do with the alignment??
                 # Currently, I dont know the correct identifier in the
@@ -1549,12 +1551,13 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                        verbose=True) -> None:
         '''
         '''  # TODO
+        # TODO properly implement verbose
         # check state
         self._check_state(has_alignment=False, is_processed=False)
 
         # Helper functions
         def query_pdb(sequence: str, seq_id_cutoff: float = 0.5,
-                      min_length: int = 30) -> list:
+                      min_length: int = 30, max_results: int = 50) -> list:
             '''
             Queries sequence with sequence identity cutoff against the PDB data
             base.
@@ -1575,7 +1578,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             # assembly query
             url = 'https://search.rcsb.org/rcsbsearch/v1/query?json='
             # TODO consider exp. method?, consider sequence length restriction!
-            # TODO maybe to much white space in there right now...
+            # TODO implement that only max_results resulst should be returned
             query = f'''
             {{
               "query": {{
@@ -1621,28 +1624,6 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
               "return_type": "polymer_entity"
             }}
             '''
-            # NOTES: NEW PLAN
-            # Query for entities, get sequences, download PDB and check for
-            # each chain whether chain fits to sequence, if yes, include
-            # NOTES
-            # return type plays a big role
-            #   - polymer_instance gives separate chains (3NY5.A, 3NY5.B, ...)
-            #   - polymer_entity gives separate sequences (3NY5_1)
-            # in the case of polymer_entity, I can also get an alignment (which
-            # could be combined for an alignment object?)
-            # however this does not seem to work with polymer_instance
-            # Is there a way to
-            #   - either get an alignment with polymer_instance?
-            #   - or retrieve structures from a polymer_entity?
-            # potentially, hmmer and hhblits will also return entities and not
-            # instances, so potentially it might make sense to work with
-            # entites?
-
-            # NOTES
-            # service sequence is using the MMseqs2 software for matching
-            # the query sequence to PDB sequences
-            # https://github.com/soedinglab/MMseqs2
-
             # format query
             # remove whitespaces
             query = re.sub(r'\s\s+', '', query)
@@ -1662,158 +1643,72 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                             f'Unknown URL status: expected 200 or 204, got '
                             f'{response.status}')
 
-            # extract potential templates and alignment from response
-            pairwise_alns = list()
-            print(response_decoded)
+            # extract templates from response
+            templates = list()
             for hit in response_decoded['result_set']:
-                template = hit['identifier']
-                print(template)
-                seq_target = (
-                        hit['services'][0]['nodes'][0]['match_context'][0]
-                        ['query_aligned_seq'])
-                seq_template = (
-                        hit['services'][0]['nodes'][0]['match_context'][0]
-                        ['subject_aligned_seq'])
-                # The PDB can return a target sequence that is cropped on the
-                # ends if there are no residues to align to (WHY??)
-                # Make sure that there absolutly are not any changes introduced
-                # somewhere inside the sequence
-                if not re.fullmatch(fr'\w*{seq_target.replace("-", "")}\w*',
-                                    sequence):
-                    templates = [h['identifier'] for h in
-                                 response_decoded['result_set']]
-                    raise RuntimeError(
-                            f"The PDB alignment generation seems to have "
-                            f"introduced deletions/insertions in your query."
-                            f"I don't know why, or how. This error should "
-                            f"never have been called...\n"
-                            f"Query Sequence: {sequence}\n"
-                            f"Sequence from PDB: "
-                            f"{seq_template.replace('-','')}\n"
-                            f"Please find another way to generate your "
-                            f"alignment and identify templates.\nThe "
-                            f"following templates were proposed by the PDB "
-                            f"for your query sequence: {templates}"
-                            )
+                templates.append(hit['identifier'])
 
-                # Then restore the original sequence length for the target
-                # sequence and introduce gaps in the alignment for the target
-                # TODO
+            return templates
 
-                # TODO
-                # WTF more wtfs!!
-                # apparenty, the PDB alignment returned does not return the
-                # full alignment, but only the "relevant" part for the
-                # query sequence. that means, that my whole replacement
-                # strategy with downloading the tempalte, and then checking for
-                # the full sequence, won't work.
-                # Unless I come up with a really really really smart idea, its
-                # back to MSA with clustalo, I guess?
-                # TODO
-
-                aln = Alignment(None)
-                aln.sequences = {
-                    self.target: seq_target,
-                    template: seq_template}
-                pairwise_alns.append(aln)
-
-            # TODO consider that the PDB does not only return pdbids, but also
-            # pairwise alignments of target sequence vs template sequence.
-            # These could be used to assemble a MSA (or rather, MSA like
-            # representation) instead of relying on clustal omega.
-            # sequences are available at:
-            # seq_target = hit['services']['0']['match_context']['0']
-            # ['query_aligned_seq'] and ['subject_aligned_seq']
-            # see https://search.rcsb.org/#search-example-3
-
-            return pairwise_alns
-
-        def combine_alns(pairwise_alns, target=self.target):
+        def generate_alignment(templates):
             '''
-            Construct combined alignment from pairwise alignments
+            Generate alignment based on list of PDB entities.
             '''
-            # algorithm:
-            # iterate over target seq
-            # if there is gap in one of the alignments at that position, insert
-            # gap, and then progress one position for all alignment where the
-            # gap was (and transfer target seq)
+            # download fastas for entities
+            # TODO potentially outsource to sequence_collection class?
+            sequences = dict()
+            for template in templates:
+                url = (
+                    f'https://rcsb.org/fasta/entity/{template}/'
+                    f'download')
+                with urllib.request.urlopen(url) as response:
+                    fasta_file = response.read().decode('utf-8')
+                sequences[template] = fasta_file.split('\n')[1]
+                # give short delay between requests
+                time.sleep(0.5)
 
-            # reformat inputs
-            alignments = [dict(**aln.sequences, index=0)
-                          for aln in pairwise_alns]
-            templates = [
-                    names[names not in [target, 'index']] for names in
-                    [list(aln.keys()) for aln in alignments]]
-            print(alignments)
-            print(templates)
+            # write to output file
+            fasta_file_name = os.path.realpath(
+                    f'.sequences_{self.target}.fa')
+            with open(fasta_file_name, 'w') as file_handle:
+                file_handle.write(f'>{self.target}\n')
+                file_handle.write(f'{self.target_seq}\n')
+                for template, seq in sequences.items():
+                    file_handle.write(f'>{template}\n')
+                    file_handle.write(f'{seq}\n')
 
-            # initialize output alignment
-            out = Alignment()
-            out.sequences = {target: ''}
-            out.sequences.update({template: '' for template in templates})
+            # perform alignment with clustalo
+            aln_file_name = os.path.realpath(
+                    f'aln_{self.target}.fasta_aln')
+            command = [
+                'clustalo', '-i', fasta_file_name, '-o', aln_file_name,
+                '--force']
+            subprocess.run(command, stdout=None, check=True, shell=False)
 
-            # process alignment
-            while True:
-                target_res = list()
-                # check current position in all alignments
-                for aln in alignments:
-                    try:
-                        if aln[target][aln['index']] != '-':
-                            target_res.append(True)
-                        else:
-                            target_res.append(False)
-                    except IndexError:
-                        target_res.append(False)
+            aln = Alignment(aln_file_name)
+            # remove files
+            for file_name in [fasta_file_name]:
+                if os.path.exists(file_name):
+                    os.remove(file_name)
 
-                # add to target sequence
-                if all(target_res):
-                    # target: append current index to output
-                    pos = alignments[0][target][alignments[0]['index']]
-                    out.sequences[target] += pos
-                    # templates: append current index to output, increment
-                    # index
-                    for aln, template in zip(alignments, templates):
-                        out.sequences[template] += aln[template][aln['index']]
-                        aln['index'] += 1
-
-                # if there are only gaps: break
-                if not any(target_res):
-                    print('break')
-                    break
-
-                # if there are gaps in some target seqs
-                else:
-                    # make gap in target seq
-                    out.sequences[target] += '-'
-                    # append to templates where in target was a gap, increment
-                    # index
-                    for aln, template, increment in zip(
-                            alignments, templates,
-                            [not x for x in target_res]):
-                        if increment:
-                            out.sequences[template] += (
-                                aln[template][aln['index']])
-                            aln['index'] += 1
-
-            # return combined alignment
-            return out
+            return aln
 
         # send query
-        pairwise_alns = query_pdb(self.target_seq, seq_id_cutoff, min_length)
-        if len(pairwise_alns) == 0:
+        templates = query_pdb(self.target_seq, seq_id_cutoff, min_length)
+        if len(templates) == 0:
             print(f'Query found no potential templates with current '
                   f'parameters.\nseq_id_cutoff:\t{seq_id_cutoff}\n'
                   f'min_length:\t{min_length}')
             return None
-        # combine alignments
-        self.alignment = combine_alns(pairwise_alns)
+        # generate alignment
+        self.alignment = generate_alignment(templates)
         # update state
         self.state['has_alignment'] = True
         # call show_suggestion
         if verbose:
             print('Query successful.\nThe following sequences have been '
                   'found.')
-            self.show_suggestion()
+            print(self.show_suggestion())
 
 
 # NOTES
