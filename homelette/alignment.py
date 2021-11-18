@@ -1243,7 +1243,14 @@ class AlignmentGenerator(abc.ABC):
         df_identity = self.alignment.calc_identity_target(self.target)
         # TODO maybe get method for PDB structure? and resolution?
         # but that would require multiple web requests, so not really ideal..
-        # TODO maybe propose ranking? (borda) or just sort by seq_id?
+
+        # Documentation of query API:
+        # https://data.rcsb.org/index.html
+
+        # TODO
+        # it is possible to fetch data with only one query
+        # also, I could use this to fetch the data for the sequences in one
+        # query instead of downloading the fasta files one by one?
 
         output = (
             # combine data frame
@@ -1553,7 +1560,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
         Target sequence
     '''
     def get_suggestion(self, seq_id_cutoff: float = 0.5, min_length: int = 30,
-                       verbose=True) -> None:
+                       max_results: int = 50, verbose=True) -> None:
         '''
         '''  # TODO
         # check state
@@ -1596,7 +1603,6 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             # TODO consider exp. method? maybe xray_only?
             # documentation for query structures can be found at
             # https://search.rcsb.org/index.html
-            print(f'{sequence}, {seq_id_cutoff}, {min_length}, {max_results}')
             query = f'''
             {{
               "query": {{
@@ -1636,7 +1642,10 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                 ]
               }},
               "request_options": {{
-                "return_all_hits": true,
+                "pager": {{
+                  "start": 0,
+                  "rows": {max_results}
+                }},
                 "scoring_strategy": "sequence"
               }},
               "return_type": "polymer_entity"
@@ -1674,10 +1683,15 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             '''
             # download fastas for entities
             # TODO potentially outsource to sequence_collection class?
+
+            # It should be possible to retrieve the sequences based on another
+            # query in one go:
+
             sequences = dict()
             vprint('Retrieving sequences...')
             # set up status updates during downloads
-            for template in templates:
+            updates = [x * 0.25 for x in range(1, 5)]
+            for i, template in enumerate(templates):
                 url = (
                     f'https://rcsb.org/fasta/entity/{template}/'
                     f'download')
@@ -1686,6 +1700,10 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                 sequences[template] = fasta_file.split('\n')[1]
                 # give short delay between requests
                 time.sleep(0.5)
+                if verbose:
+                    if (i+1)/len(templates) >= updates[0]:
+                        vprint(f'Progress: {updates.pop(0) * 100:.0f} %...')
+
             vprint('Sequences succefully retrieved!\n')
 
             # write to output file
@@ -1717,7 +1735,8 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
 
         # send query
         vprint('Querying PDB...')
-        templates = query_pdb(self.target_seq, seq_id_cutoff, min_length)
+        templates = query_pdb(self.target_seq, seq_id_cutoff, min_length,
+                              max_results)
         if len(templates) == 0:
             print(f'Query found no potential templates with current '
                   f'parameters.\nseq_id_cutoff:\t{seq_id_cutoff}\n'
