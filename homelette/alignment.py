@@ -1305,17 +1305,41 @@ class AlignmentGenerator(abc.ABC):
         # verbose behaviour
         # adapted from https://stackoverflow.com/a/5980173/7912251
         if verbose:
-            def vprint(*args):
+            def vprint(*args, **kwargs):
                 for arg in args:
-                    print(arg)
+                    print(arg, **kwargs)
         else:
             def vprint(*args):
                 pass
 
+        def guess_pdb_format(templates):
+            '''
+            Guess PDB identifier format from template names
+            '''
+            r_identifier = re.compile(r'^[A-Za-z0-9]{4}')
+            r_chain = re.compile(r'^[A-Za-z0-9]{4}[\W_][A-Za-z]')
+            r_entity = re.compile(r'^[A-Za-z0-9]{4}[\W_][0-9]')
+            if all([re.fullmatch(r_identifier, template) for template in
+                   templates]):
+                pdb_format = 'identifier'
+            elif all([re.fullmatch(r_chain, template) for template in
+                     templates]):
+                pdb_format = 'chain'
+            elif all([re.fullmatch(r_entity, template) for template in
+                     templates]):
+                pdb_format = 'entity'
+            else:
+                raise ValueError(
+                    'Unable to guess pdb_format from template names. Please '
+                    'set pdb_format manually and make sure all template names '
+                    'in the alignment follow one of the proposed naming '
+                    'schemes.')
+            return pdb_format
+
         def parse_alignment(alignment: Alignment, templates: typing.Iterable,
                             pdb_format) -> dict:
             '''
-            '''
+            '''  # TODO
             out = {}
             for template in templates:
                 # get PDBID
@@ -1362,30 +1386,41 @@ class AlignmentGenerator(abc.ABC):
 
             return seq_template_padded
 
+        def process_template_pdb(pdb, pdb_file_name, template_location):
+            '''
+            Remove HOH, renumber residues, rename chain ID, save to file.
+            '''
+            pdb = (
+                pdb
+                .transform_filter_res_name(['HOH'])
+                .transform_renumber_residues(starting_res=1)
+                .transform_change_chain_id(new_chain_id='A'))
+            pdb.write_pdb(os.path.join(
+                template_location, pdb_file_name))
+
+        def add_seq_to_aln(aln, seq_name, old_sequence, new_sequence):
+            '''
+            Adds sequence to alignment, then performs sequence replacement and
+            annotates the sequence.
+            '''
+            annotations = {
+                'seq_type': 'structure',
+                'pdb_code': seq_name,
+                'begin_res': '1',
+                'begin_chain': 'A',
+                }
+            aln.sequences.update({
+                seq_name: Sequence(seq_name, old_sequence, **annotations)})
+            aln.replace_sequence(seq_name, new_sequence)
+
+            return aln
+
         # check pdb_format
         templates = [template for template in self.alignment.sequences.keys()
                      if template != self.target]
         if pdb_format == 'auto':
             vprint('Guessing template naming format...')
-            # try to guess template naming format
-            r_identifier = re.compile(r'^[A-Za-z0-9]{4}')
-            r_chain = re.compile(r'^[A-Za-z0-9]{4}[\W_][A-Za-z]')
-            r_entity = re.compile(r'^[A-Za-z0-9]{4}[\W_][0-9]')
-            if all([re.fullmatch(r_identifier, template) for template in
-                   templates]):
-                pdb_format = 'identifier'
-            elif all([re.fullmatch(r_chain, template) for template in
-                     templates]):
-                pdb_format = 'chain'
-            elif all([re.fullmatch(r_entity, template) for template in
-                     templates]):
-                pdb_format = 'entity'
-            else:
-                raise ValueError(
-                    'Unable to guess pdb_format from template names. Please '
-                    'set pdb_format manually and make sure all template names '
-                    'in the alignment follow one of the proposed naming '
-                    'schemes.')
+            pdb_format = guess_pdb_format(templates)
             vprint(f'Template naming format guessed: {pdb_format}!\n')
         elif pdb_format not in ['chain', 'identifier', 'entity']:
             raise ValueError(
@@ -1402,10 +1437,9 @@ class AlignmentGenerator(abc.ABC):
         else:
             vprint('Template dir found!\n')
 
+        # parse templates
         templates_parsed = parse_alignment(self.alignment, templates,
                                            pdb_format)
-        print(templates_parsed)
-
         vprint('Processing templates:\n')
 
         # initialize changed alignment
@@ -1413,7 +1447,7 @@ class AlignmentGenerator(abc.ABC):
         new_aln.sequences = {
                 self.target: self.alignment.sequences[self.target]}
 
-        # iterate PDB identifier
+        # iterate over PDB identifier
         for pdbid in templates_parsed:
             # download template
             vprint(f'{pdbid} downloading from PDB...')
@@ -1438,32 +1472,15 @@ class AlignmentGenerator(abc.ABC):
                     except RuntimeError as e:
                         raise RuntimeError(f'Template: {pdbid}_{chain}') from e
 
-                    # add sequence to new alignment
-                    new_aln.sequences.update(
-                        {f'{pdbid}_{chain}': (
-                            self.alignment.sequences[template_name])})
-                    new_aln.replace_sequence(
-                            template_name, seq_template_padded)
+                    new_aln = add_seq_to_aln(
+                        new_aln, f'{pdbid}_{chain}',
+                        self.alignment.sequences[template_name].sequence,
+                        seq_template_padded)
                     vprint(f'{pdbid}_{chain}: Alignment updated!')
 
-                    # process template pdb: remove HOH, renumber residues,
-                    # rename chain ID
-                    pdb_chain = (
-                            pdb_chain
-                            .transform_filter_res_name(['HOH'])
-                            .transform_renumber_residues(starting_res=1)
-                            .transform_change_chain_id(new_chain_id='A'))
-
-                    # write template to file
-                    pdb_chain.write_pdb(os.path.join(
-                        self.template_location, f'{pdbid}_{chain}.pdb'))
-
+                    process_template_pdb(pdb_chain, f'{pdbid}_{chain}.pdb',
+                                         self.template_location)
                     vprint(f'{pdbid}_{chain}: PDB processed!')
-
-                    # anotate template sequence in alignment
-                    new_aln.sequences[f'{pdbid}_{chain}'].annotate(
-                        seq_type='structure', pdb_code=f'{pdbid}_{chain}',
-                        begin_res='1', begin_chain='A')
 
             # if template were not given with chain identifiers, iterate over
             # all combinations of entities and chains and try to match them
@@ -1483,39 +1500,25 @@ class AlignmentGenerator(abc.ABC):
                         # if not matching, dont continue loop
                         continue
 
-                    # add sequence to new alignment
-                    new_aln.sequences.update(
-                        {f'{pdbid}_{chain}': (
-                            self.alignment.sequences[template_name])})
-                    new_aln.replace_sequence(
-                        f'{pdbid}_{chain}', seq_template_padded)
+                    vprint(f'{pdbid}_{chain}: Chain extracted!')
 
-                    vprint('')  # TODO
+                    # update alignment
+                    new_aln = add_seq_to_aln(
+                        new_aln, f'{pdbid}_{chain}',
+                        self.alignment.sequences[template_name].sequence,
+                        seq_template_padded)
+                    vprint(f'{pdbid}_{chain}: Alignment updated!')
 
-                    # process template pdb: remove HOH, renumber residues,
-                    # rename chain ID
-                    pdb_chain = (
-                            pdb_chain
-                            .transform_filter_res_name(['HOH'])
-                            .transform_renumber_residues(starting_res=1)
-                            .transform_change_chain_id(new_chain_id='A'))
-
-                    # write template to file
-                    pdb_chain.write_pdb(os.path.join(
-                        self.template_location, f'{pdbid}_{chain}.pdb'))
-
+                    # process template pdb
+                    process_template_pdb(pdb_chain, f'{pdbid}_{chain}.pdb',
+                                         self.template_location)
                     vprint(f'{pdbid}_{chain}: PDB processed!')
-
-                    # anotate template sequence in alignment
-                    new_aln.sequences[f'{pdbid}_{chain}'].annotate(
-                        seq_type='structure', pdb_code=f'{pdbid}_{chain}',
-                        begin_res='1', begin_chain='A')
 
         # update alignment
         self.alignment = new_aln
         # update state
         self.state['is_processed'] = True
-        vprint(f'Finishing... All templates successfully\ndownloaded and '
+        vprint(f'\nFinishing... All templates successfully\ndownloaded and '
                f'processed!\nTemplates can be found in\n'
                f'"{self.template_location}".')
 
@@ -1560,9 +1563,9 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
         # verbose behaviour
         # adapted from https://stackoverflow.com/a/5980173/7912251
         if verbose:
-            def vprint(*args):
+            def vprint(*args, **kwargs):
                 for arg in args:
-                    print(arg)
+                    print(arg, **kwargs)
         else:
             def vprint(*args):
                 pass
@@ -1672,6 +1675,8 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             # download fastas for entities
             # TODO potentially outsource to sequence_collection class?
             sequences = dict()
+            vprint('Retrieving sequences...')
+            # set up status updates during downloads
             for template in templates:
                 url = (
                     f'https://rcsb.org/fasta/entity/{template}/'
@@ -1681,6 +1686,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                 sequences[template] = fasta_file.split('\n')[1]
                 # give short delay between requests
                 time.sleep(0.5)
+            vprint('Sequences succefully retrieved!\n')
 
             # write to output file
             fasta_file_name = os.path.realpath(
@@ -1693,6 +1699,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                     file_handle.write(f'{seq}\n')
 
             # perform alignment with clustalo
+            vprint('Generating alignment...')
             aln_file_name = os.path.realpath(
                     f'aln_{self.target}.fasta_aln')
             command = [
@@ -1709,14 +1716,17 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             return aln
 
         # send query
+        vprint('Querying PDB...')
         templates = query_pdb(self.target_seq, seq_id_cutoff, min_length)
         if len(templates) == 0:
             print(f'Query found no potential templates with current '
                   f'parameters.\nseq_id_cutoff:\t{seq_id_cutoff}\n'
                   f'min_length:\t{min_length}')
             return None
+        vprint(f'Query successful, {len(templates)} found!\n')
         # generate alignment
         self.alignment = generate_alignment(templates)
+        vprint('Alignment generated!\n')
         # update state
         self.state['has_alignment'] = True
         # call show_suggestion
