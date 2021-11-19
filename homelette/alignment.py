@@ -1756,15 +1756,64 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
 # NOTES
 # github https://github.com/soedinglab/hh-suite
 # databases http://wwwuser.gwdg.de/~compbiol/data/hhsuite/databases/hhsuite_dbs
+# maybe make hhblits_quick and hhblits_slow and include database query to
+# uniref30 in slow mode
+# or initialize with mode slow
 class AlignmentGenerator_hhblits(AlignmentGenerator):
     '''
     '''
-    def get_suggestion(self):
+    def get_suggestion(
+            self,
+            # database_dir: str = './database/',
+            database_dir='/home/philipp/Downloads/db_pdb70/',
+            mode: str = 'fast',
+            iterations: int = 2, n_threads: int = 2, mact: float = 0.9,
+            neffmax: float = 10.0) -> None:
         '''
         '''  # TODO
         # check state
         self._check_state(has_alignment=False, is_processed=False)
-        # TODO
+
+        # create query file
+        # TODO if mode slow, query file is output from hhblits against uniref30
+        query_file = os.path.realpath(f'{self.target}.fa')
+        with open(query_file, 'w') as file_handler:
+            file_handler.write(f'>{self.target}\n')
+            file_handler.write(f'{self.target_seq}')
+
+        # run hhblits
+        database_pdb70 = os.path.join(database_dir, 'pdb70')
+        hhr_file = os.path.realpath(f'{self.target}.hrr')
+        a3m_file = os.path.realpath(f'{self.target}.a3m')
+        command = [
+            'hhblits', '-i', query_file, '-d', database_pdb70, '-o', hhr_file,
+            '-oa3m', a3m_file, '-n', str(iterations), '-all', '-cpu',
+            str(n_threads), '-mact', str(mact), '-neffmax', str(neffmax), '-v',
+            '1']
+        subprocess.run(command, stdout=None, check=True, shell=False)
+
+        # run reformat.pl
+        fasta_file = os.path.realpath(f'{self.target}.fasta_aln')
+        command = ['reformat.pl', 'a3m', 'fas', a3m_file, fasta_file, '-v0']
+        subprocess.run(command, stdout=None, check=True, shell=False)
+
+        # filter hits out of full alignment
+        templates = []  # parse from hrr file
+        with open(hhr_file, 'r') as file_handler:
+            results = file_handler.read()
+        results = results.split('\n\n')[1][1:]
+        for r in results.splitlines():
+            templates.append(re.split(r'\s', r.strip())[1])
+
+        print(templates)
+        return
+
+        aln = Alignment(fasta_file)
+        aln_filtered = Alignment(None)
+
+        aln_filtered.remove_redundant_gaps()
+        self.alignment = aln_filtered
+
         # update state
         self.state['has_alignment'] = True
         pass
