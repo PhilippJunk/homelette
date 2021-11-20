@@ -1767,7 +1767,7 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
             # database_dir: str = './database/',
             database_dir='/home/philipp/Downloads/db_pdb70/',
             mode: str = 'fast',
-            iterations: int = 2, n_threads: int = 2, mact: float = 0.9,
+            iterations: int = 2, n_threads: int = 2, mact: float = 0.35,
             neffmax: float = 10.0) -> None:
         '''
         '''  # TODO
@@ -1791,32 +1791,54 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
             str(n_threads), '-mact', str(mact), '-neffmax', str(neffmax), '-v',
             '1']
         subprocess.run(command, stdout=None, check=True, shell=False)
+        # TODO filtering of alignment by evalue: currently -e 0.001
 
         # run reformat.pl
         fasta_file = os.path.realpath(f'{self.target}.fasta_aln')
         command = ['reformat.pl', 'a3m', 'fas', a3m_file, fasta_file, '-v0']
         subprocess.run(command, stdout=None, check=True, shell=False)
+        # TODO it is still printing: ('creating gaps...'), suppress this!
 
         # filter hits out of full alignment
+        aln = Alignment(fasta_file)  # unfiltered alignment
+        aln_filtered = Alignment(None)  # final alignment
+        aln_filtered.sequences = {self.target: aln.sequences[self.target]}
         templates = []  # parse from hrr file
+
         with open(hhr_file, 'r') as file_handler:
             results = file_handler.read()
-        results = results.split('\n\n')[1][1:]
-        for r in results.splitlines():
+        results = results.split('\n\n')[1]
+        for r in results.splitlines()[1:]:
             templates.append(re.split(r'\s', r.strip())[1])
 
-        print(templates)
-        return
+        sequences_filtered = {key: None for key in templates}
 
-        aln = Alignment(fasta_file)
-        aln_filtered = Alignment(None)
+        for template in templates:
+            r = re.compile(f'^{template}')
+            full_name = list(filter(r.match, aln.sequences.keys()))
+            if len(full_name) == 1:
+                sequences_filtered[template] = aln.sequences[full_name[0]]
+            elif len(full_name) > 1:
+                print(f'Multiple sequences found for template {template}: '
+                      f'{full_name}')
 
+        # filter out templates that did not get assigned a sequence
+        aln_filtered.sequences.update({
+                k: v for k, v in sequences_filtered.items() if v is not None})
         aln_filtered.remove_redundant_gaps()
         self.alignment = aln_filtered
 
         # update state
         self.state['has_alignment'] = True
-        pass
+
+        # TODO
+        # The returned alignments contain not the full template sequences, but
+        # only fragments.
+        # Should I abandon this plan here or should I make an automatic
+        # trimming of the template structure as part of the pull down of the
+        # PDB?
+        # I think I should go for the second one but boy.... why is all of this
+        # so complicated?
 
 
 class AlignmentGenerator_hmmer(AlignmentGenerator):
