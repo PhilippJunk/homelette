@@ -391,8 +391,8 @@ class Alignment():
         -------
         None
         '''
-        with open(file_name, 'r') as f:
-            lines = f.readlines()
+        with open(file_name, 'r') as file_handler:
+            lines = file_handler.readlines()
 
         sequences = dict()  # dict that will replace self.sequences
         seq, seq_name = str(), str()  # temporary storage for name and sequence
@@ -449,8 +449,8 @@ class Alignment():
         -------
         None
         '''
-        with open(file_name, 'r') as f:
-            lines = f.readlines()
+        with open(file_name, 'r') as file_handler:
+            lines = file_handler.readlines()
 
         sequences = dict()  # dict that will replace self.sequences
         seq, seq_name = str(), str()  # temporary storage for name and sequence
@@ -553,15 +553,17 @@ class Alignment():
         -------
         None
         '''
-        with open(file_name, 'w') as f:
+        with open(file_name, 'w') as file_handler:
             for sequence_name, sequence in self.sequences.items():
                 # write name and annotation
-                f.write('>P1;{}\n'.format(sequence_name))
-                f.write('{}\n'.format(sequence.get_annotation_pir()))
+                file_handler.write('>P1;{}\n'.format(sequence_name))
+                file_handler.write(
+                    '{}\n'.format(sequence.get_annotation_pir()))
                 # write sequence with newline every nth character
-                f.write(re.sub(''.join(['(.{', str(line_wrap), '})']), '\\1\n',
-                        sequence.sequence, 0, re.DOTALL))
-                f.write('\n*\n')
+                file_handler.write(
+                    re.sub(''.join(['(.{', str(line_wrap), '})']), '\\1\n',
+                           sequence.sequence, 0, re.DOTALL))
+                file_handler.write('\n*\n')
 
     def write_fasta(self, file_name: str, line_wrap: int = 80) -> None:
         '''
@@ -578,14 +580,15 @@ class Alignment():
         -------
         None
         '''
-        with open(file_name, 'w') as f:
+        with open(file_name, 'w') as file_handler:
             for sequence_name, sequence in self.sequences.items():
                 # write name
-                f.write('>{}\n'.format(sequence_name))
+                file_handler.write('>{}\n'.format(sequence_name))
                 # write sequence with newline every nth character
-                f.write(re.sub(''.join(['(.{', str(line_wrap), '})']), '\\1\n',
-                        sequence.sequence, 0, re.DOTALL))
-                f.write('\n')
+                file_handler.write(
+                        re.sub(''.join(['(.{', str(line_wrap), '})']), '\\1\n',
+                               sequence.sequence, 0, re.DOTALL))
+                file_handler.write('\n')
 
     def print_clustal(self, line_wrap: int = 80) -> None:
         '''
@@ -603,7 +606,7 @@ class Alignment():
         # get sequence names and sequences and trim sequence_names
         sequences = [sequence.sequence for sequence in self.sequences.values()]
         sequence_names = [(name + '          ')[:10] for name in
-                          self.sequences.keys()]
+                          self.sequences]
         # assemble output
         while len(sequences[0]) != 0:
             new_sequences = list()
@@ -629,8 +632,8 @@ class Alignment():
         None
         '''
         # redirect output of self.print_clustal to file
-        with open(file_name, 'w') as f:
-            with contextlib.redirect_stdout(f):
+        with open(file_name, 'w') as file_handler:
+            with contextlib.redirect_stdout(file_handler):
                 self.print_clustal(line_wrap=line_wrap)
 
     def remove_redundant_gaps(self) -> None:
@@ -868,7 +871,7 @@ class Alignment():
              {\\text{length}(\\text{sequence1})}
         '''
         output = {'sequence_1': [], 'sequence_2': [], 'identity': []}
-        for sequence_name_2 in self.sequences.keys():
+        for sequence_name_2 in self.sequences:
             if not sequence_name == sequence_name_2:
                 output['sequence_1'].append(sequence_name)
                 output['sequence_2'].append(sequence_name_2)
@@ -1002,7 +1005,7 @@ class Alignment():
                 'sequence_2': [],
                 'coverage': [],
                 }
-        for sequence_name_2 in self.sequences.keys():
+        for sequence_name_2 in self.sequences:
             if not sequence_name == sequence_name_2:
                 output['sequence_1'].append(sequence_name)
                 output['sequence_2'].append(sequence_name_2)
@@ -1132,7 +1135,7 @@ class AlignmentGenerator(abc.ABC):
                  template_location: str = './templates'):
         self.alignment = None
         self.target_seq = sequence
-        self.target = 'target'
+        self.target = target
         self.template_location = os.path.abspath(template_location)
         # Simple state machine, together with _check_state
         self.state = {
@@ -1145,7 +1148,6 @@ class AlignmentGenerator(abc.ABC):
         '''
         Generate suggestion for templates and alignment
         '''
-        pass
 
     def _check_state(self, has_alignment: bool = None, is_processed: bool =
                      None) -> None:
@@ -1178,12 +1180,9 @@ class AlignmentGenerator(abc.ABC):
 
             Returns true if required is None
             '''
-            if required is None:
+            if (required is None) or (required is state):
                 return True
-            if required is state:
-                return True
-            if required is not state:
-                return False
+            return False
 
         if not (perform_check(has_alignment, self.state['has_alignment']) and
                 perform_check(is_processed, self.state['is_processed'])):
@@ -1326,14 +1325,14 @@ class AlignmentGenerator(abc.ABC):
             r_identifier = re.compile(r'^[A-Za-z0-9]{4}')
             r_chain = re.compile(r'^[A-Za-z0-9]{4}[\W_][A-Za-z]')
             r_entity = re.compile(r'^[A-Za-z0-9]{4}[\W_][0-9]')
-            if all([re.fullmatch(r_identifier, template) for template in
-                   templates]):
+            if all((re.fullmatch(r_identifier, template) for template in
+                   templates)):
                 pdb_format = 'identifier'
-            elif all([re.fullmatch(r_chain, template) for template in
-                     templates]):
+            elif all((re.fullmatch(r_chain, template) for template in
+                     templates)):
                 pdb_format = 'chain'
-            elif all([re.fullmatch(r_entity, template) for template in
-                     templates]):
+            elif all((re.fullmatch(r_entity, template) for template in
+                     templates)):
                 pdb_format = 'entity'
             else:
                 raise ValueError(
@@ -1434,6 +1433,15 @@ class AlignmentGenerator(abc.ABC):
                 f'Invalid value to pdb_format: {pdb_format}\nHas to be one of '
                 f'"auto", "chain", "entity", "identifier".')
 
+        # TODO NOTES
+        # Thoughts about how to incorporate sequences which might not be the
+        # full sequence (hhblits) in the retrieval of pdb structures
+        # Consider (again) to raise a request for the full sequences to the PDB
+        # If full sequence matches seqeunce in the alignment, no change
+        # If not, find which fragment we are talking about
+        # Perform padding as usual
+        # Remove parts of the structure prior to more processing
+
         # Initialize template dir
         vprint('Checking template dir...')
         if not os.path.exists(self.template_location):
@@ -1476,8 +1484,9 @@ class AlignmentGenerator(abc.ABC):
                     try:
                         seq_template_padded = adjust_template_seq(
                                 seq_alignment, seq_template)
-                    except RuntimeError as e:
-                        raise RuntimeError(f'Template: {pdbid}_{chain}') from e
+                    except RuntimeError as exc:
+                        msg = f'Template: {pdbid}_{chain}'
+                        raise RuntimeError(msg) from exc
 
                     new_aln = add_seq_to_aln(
                         new_aln, f'{pdbid}_{chain}',
@@ -1686,6 +1695,50 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
 
             # It should be possible to retrieve the sequences based on another
             # query in one go:
+            access_types = {
+                'identifier': ('entries', 'entry_ids'),
+                'entity': ('polymer_entities', 'entity_ids'),
+                'chain': ('polymer_entity_instances', 'instance_ids'),
+                }
+            pdb_format = 'entity'
+            templates = []
+
+            url = 'https://data.rcsb.org/graphql?'
+            # query for structure annotation in show PDB
+            query = f'''query={{
+              {access_types[pdb_format][0]}({access_types[pdb_format][1]}:
+                {templates!r}) {{
+                rcsb_id
+                struct {{
+                  title
+                }}
+                exptl {{
+                  method
+                }}
+                rcsb_entry_info {{
+                  resolution_combined
+                }}
+              }}
+            }}
+            '''
+
+            # format query
+            query = query.replace("'", '"')
+            # encode URL
+            query = urllib.parse.quote(query, safe='=():,')
+
+            # access query
+            with urllib.request.urlopen(url + query) as response:
+                # check status
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200, got '
+                            f'{response.status}')
+
+            print(response_decoded)
 
             sequences = dict()
             vprint('Retrieving sequences...')
