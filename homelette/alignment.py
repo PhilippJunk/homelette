@@ -1220,6 +1220,56 @@ class AlignmentGenerator(abc.ABC):
             # raise error with assembled details
             raise RuntimeError(msg)
 
+    def _guess_pdb_format_from_aln(self) -> str:
+        '''
+        Guess which organization layer of PDB is used in alignment.
+
+        Returns
+        -------
+        pdb_format : str
+            Can be one of `entry`, `polymer_entity`, or
+            `polymer_entity_instance`.
+
+        Raises
+        ------
+        ValueError
+            PDB format could not be guessed.
+
+        Notes
+        -----
+        The following organizational layers exist within the RCSB:
+
+        * entry: The full PDB entry (i.e. 3NY5)
+        * polymer_entity: On of the polymer entities under the entry (i.e.
+        3NY5_1)
+        * polymer_entity_instance: One of the instances of a polymer entity
+        under the entry (i.e. 3NY5.A)
+        '''
+        # check state
+        self._check_state(has_alignment=True, is_processed=None)
+        # parse template ids from aln
+        templates = [t for t in self.alignment.sequences.keys() if t !=
+                     self.target]
+        # identify pattern
+        r_entry = re.compile(r'^[A-Za-z0-9]{4}')
+        r_entity = re.compile(r'^[A-Za-z0-9]{4}[\W_][0-9]')
+        r_instance = re.compile(r'^[A-Za-z0-9]{4}[\W_][A-Za-z]')
+        if all((re.fullmatch(r_entry, template) for template in
+                templates)):
+            pdb_format = 'entry'
+        elif all((re.fullmatch(r_entity, template) for template in
+                  templates)):
+            pdb_format = 'polymer_entity'
+        elif all((re.fullmatch(r_instance, template) for template in
+                  templates)):
+            pdb_format = 'polymer_entity_instance'
+        else:
+            raise ValueError(
+                'Unable to guess pdb_format from template names. Please '
+                'make sure all template names in the alignment follow one of'
+                ' the proposed naming schemes.')
+        return pdb_format
+
     def show_suggestion(self) -> typing.Type['pd.DataFrame']:
         '''
         Shows which templates have been suggested by the AlignmentGenerator, as
@@ -1235,31 +1285,84 @@ class AlignmentGenerator(abc.ABC):
         ------
         RuntimeError
             Alignment has not been generated yet
-        '''
+
+        Notes
+        -----
+        describe coverage, identity and annotation
+        '''  # TODO
         self._check_state(has_alignment=True, is_processed=None)
 
+        # calculate coverage and identity
         df_coverage = self.alignment.calc_coverage_target(self.target)
         df_identity = self.alignment.calc_identity_target(self.target)
-        # TODO maybe get method for PDB structure? and resolution?
-        # but that would require multiple web requests, so not really ideal..
 
+        # Fetch annotation from RCSB
+        templates = list(set(
+            [t[0:4] for t in self.alignment.sequences if t != self.target]))
+        url = 'https://data.rcsb.org/graphql?'
+
+        # TODO consider including pdb_format check and maybe retrieve more
+        # information if chain or entity format?
+
+        # query for structure annotation
         # Documentation of query API:
         # https://data.rcsb.org/index.html
+        query = f'''query={{
+ entries(entry_ids: {templates!r}) {{
+  rcsb_id
+  struct {{
+   title
+  }}
+  exptl {{
+   method
+  }}
+  rcsb_entry_info {{
+   resolution_combined
+  }}
+ }}
+}}
+'''
+        # format query
+        query = query.replace("'", '"')
+        # encode URL
+        query = urllib.parse.quote(query, safe='=():,')
 
-        # TODO
-        # it is possible to fetch data with only one query
-        # also, I could use this to fetch the data for the sequences in one
-        # query instead of downloading the fasta files one by one?
+        # access query
+        with urllib.request.urlopen(url + query) as response:
+            # check status
+            if response.status == 200:
+                response_decoded = json.loads(response.read().decode(
+                    'utf-8'))
 
+        # extract data
+        annot_id = []
+        for r in response_decoded['data']['entries']:
+            annot_id.append([
+                r['rcsb_id'],
+                r['exptl'][0]['method'],
+                r['rcsb_entry_info']['resolution_combined'][0],
+                r['struct']['title'],
+                ])
+        df_annotation = pd.DataFrame(annot_id, columns=[
+            'pdbid', 'method', 'resolution', 'title'])
+
+        # combine data frames
         output = (
-            # combine data frame
             pd.merge(df_coverage, df_identity, on=('sequence_1', 'sequence_2'))
-            # sort values
-            .sort_values(by=['identity', 'coverage'], ascending=[False, False])
             # remove column with sequence_1 and rename sequence_2
             .drop('sequence_1', axis=1)
             .rename({'sequence_2': 'template'}, axis=1)
+            .assign(pdbid=lambda df: df['template'].map(
+                lambda template: template[0:4]))
             )
+        output = (
+            pd.merge(output, df_annotation, on=('pdbid', 'pdbid'))
+            # sort values
+            .sort_values(by=['identity', 'coverage'], ascending=[False, False])
+            # remove merge column
+            .drop('pdbid', axis=1)
+            )
+
         return output
 
     def select_templates(self, templates: typing.Iterable) -> None:
@@ -1291,7 +1394,8 @@ class AlignmentGenerator(abc.ABC):
         ------
         RuntimeError
             Alignment has not been generated yet
-
+        ValueError
+            PDB format could not be guessed
 
         Notes
         -----
@@ -1299,10 +1403,11 @@ class AlignmentGenerator(abc.ABC):
         the alignment:
 
         * auto: Automatic guess for pdb_format
-        * chain: Sequences are named in the format PDBID_CHAIN (i.e. 4G0N_A)
-        * entity: Sequences are named in the format PDBID_ENTITY (i.e. 4G0N_1)
-        * identifier: Sequences are named only be their PDB identifier (i.e.
-        4G0N)
+        * entry: Sequences are named only be their PDB identifier (i.e. 4G0N)
+        * polymer_entity: Sequences are named in the format PDBID_ENTITY (i.e.
+        4G0N_1)
+        * polymer_entity_instance: Sequences are named in the format
+        PDBID_CHAIN (i.e. 4G0N_A)
         '''
         # check state
         self._check_state(has_alignment=True, is_processed=False)
@@ -1317,30 +1422,6 @@ class AlignmentGenerator(abc.ABC):
         else:
             def vprint(*args):
                 pass
-
-        def guess_pdb_format(templates):
-            '''
-            Guess PDB identifier format from template names
-            '''
-            r_identifier = re.compile(r'^[A-Za-z0-9]{4}')
-            r_chain = re.compile(r'^[A-Za-z0-9]{4}[\W_][A-Za-z]')
-            r_entity = re.compile(r'^[A-Za-z0-9]{4}[\W_][0-9]')
-            if all((re.fullmatch(r_identifier, template) for template in
-                   templates)):
-                pdb_format = 'identifier'
-            elif all((re.fullmatch(r_chain, template) for template in
-                     templates)):
-                pdb_format = 'chain'
-            elif all((re.fullmatch(r_entity, template) for template in
-                     templates)):
-                pdb_format = 'entity'
-            else:
-                raise ValueError(
-                    'Unable to guess pdb_format from template names. Please '
-                    'set pdb_format manually and make sure all template names '
-                    'in the alignment follow one of the proposed naming '
-                    'schemes.')
-            return pdb_format
 
         def parse_alignment(alignment: Alignment, templates: typing.Iterable,
                             pdb_format) -> dict:
@@ -1426,7 +1507,7 @@ class AlignmentGenerator(abc.ABC):
                      if template != self.target]
         if pdb_format == 'auto':
             vprint('Guessing template naming format...')
-            pdb_format = guess_pdb_format(templates)
+            pdb_format = self._guess_pdb_format_from_aln()
             vprint(f'Template naming format guessed: {pdb_format}!\n')
         elif pdb_format not in ['chain', 'identifier', 'entity']:
             raise ValueError(
