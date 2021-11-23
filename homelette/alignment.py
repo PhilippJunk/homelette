@@ -1270,15 +1270,22 @@ class AlignmentGenerator(abc.ABC):
                 ' the proposed naming schemes.')
         return pdb_format
 
-    def show_suggestion(self) -> typing.Type['pd.DataFrame']:
+    def show_suggestion(self, get_metadata: bool = False
+                        ) -> typing.Type['pd.DataFrame']:
         '''
         Shows which templates have been suggested by the AlignmentGenerator, as
         well as some useful statistics (sequence identity, coverage).
 
+        Parameters
+        ----------
+        get_metadata : bool
+            Retrieve additional metadata (experimental method, resolution,
+            structure title) from the RCSB
+
         Returns
         -------
         suggestion : pd.DataFrame
-            DataFrame with calculates sequence identity and sequence coverage
+            DataFrame with calculated sequence identity and sequence coverage
             for target
 
         Raises
@@ -1300,9 +1307,6 @@ class AlignmentGenerator(abc.ABC):
         templates = list(set(
             [t[0:4] for t in self.alignment.sequences if t != self.target]))
         url = 'https://data.rcsb.org/graphql?'
-
-        # TODO consider including pdb_format check and maybe retrieve more
-        # information if chain or entity format?
 
         # query for structure annotation
         # Documentation of query API:
@@ -1771,38 +1775,18 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             '''
             Generate alignment based on list of PDB entities.
             '''
+            vprint('Retrieving sequences...')
             # download fastas for entities
-            # TODO potentially outsource to sequence_collection class?
-
-            # It should be possible to retrieve the sequences based on another
-            # query in one go:
-            access_types = {
-                'identifier': ('entries', 'entry_ids'),
-                'entity': ('polymer_entities', 'entity_ids'),
-                'chain': ('polymer_entity_instances', 'instance_ids'),
-                }
-            pdb_format = 'entity'
-            templates = []
-
             url = 'https://data.rcsb.org/graphql?'
-            # query for structure annotation in show PDB
-            query = f'''query={{
-              {access_types[pdb_format][0]}({access_types[pdb_format][1]}:
-                {templates!r}) {{
-                rcsb_id
-                struct {{
-                  title
-                }}
-                exptl {{
-                  method
-                }}
-                rcsb_entry_info {{
-                  resolution_combined
-                }}
-              }}
-            }}
-            '''
-
+            query = (f'query={{'
+                     f' polymer_entities (entity_ids: {templates!r}) {{'
+                     f'  rcsb_id'
+                     f'  entity_poly {{'
+                     f'   pdbx_seq_one_letter_code_can'
+                     f'  }}'
+                     f' }}'
+                     f'}}'
+                     )
             # format query
             query = query.replace("'", '"')
             # encode URL
@@ -1819,36 +1803,18 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                             f'Unknown URL status: expected 200, got '
                             f'{response.status}')
 
-            print(response_decoded)
-
-            sequences = dict()
-            vprint('Retrieving sequences...')
-            # set up status updates during downloads
-            updates = [x * 0.25 for x in range(1, 5)]
-            for i, template in enumerate(templates):
-                url = (
-                    f'https://rcsb.org/fasta/entity/{template}/'
-                    f'download')
-                with urllib.request.urlopen(url) as response:
-                    fasta_file = response.read().decode('utf-8')
-                sequences[template] = fasta_file.split('\n')[1]
-                # give short delay between requests
-                time.sleep(0.5)
-                if verbose:
-                    if (i+1)/len(templates) >= updates[0]:
-                        vprint(f'Progress: {updates.pop(0) * 100:.0f} %...')
-
-            vprint('Sequences succefully retrieved!\n')
-
-            # write to output file
+            # parse response to file
             fasta_file_name = os.path.realpath(
                     f'.sequences_{self.target}.fa')
             with open(fasta_file_name, 'w') as file_handle:
                 file_handle.write(f'>{self.target}\n')
                 file_handle.write(f'{self.target_seq}\n')
-                for template, seq in sequences.items():
+                for r in response_decoded['data']['polymer_entities']:
+                    template = r['rcsb_id']
+                    sequence = r['entity_poly']['pdbx_seq_one_letter_code_can']
                     file_handle.write(f'>{template}\n')
-                    file_handle.write(f'{seq}\n')
+                    file_handle.write(f'{sequence}\n')
+            vprint('Sequences succefully retrieved!\n')
 
             # perform alignment with clustalo
             vprint('Generating alignment...')
