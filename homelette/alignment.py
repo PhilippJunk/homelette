@@ -35,6 +35,7 @@ import itertools
 import json
 import os.path
 import re
+import shutil
 import subprocess
 import typing
 import urllib.error
@@ -1873,15 +1874,71 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
     '''
     def get_suggestion(
             self,
-            # database_dir: str = './database/',
-            database_dir='/home/philipp/Downloads/db_pdb70/',
-            mode: str = 'fast',
+            # database_dir: str = './databases/',
+            database_dir='/home/philipp/Downloads/hhsuite_dbs/',
+            use_uniref: bool = False,
             iterations: int = 2, n_threads: int = 2, mact: float = 0.35,
-            neffmax: float = 10.0) -> None:
+            neffmax: float = 10.0, verbose: bool = True) -> None:
         '''
-        '''  # TODO
+        Use hhblits to identify template structures and create a multiple
+        sequence alignment.
+
+        Parameters
+        ----------
+        database_dir : str
+            The directory where the pdb70 (and the UniRef30) database are
+            stored (default ./databases/).
+        use_uniref : bool
+            Use UniRef30 to create a MSA before querying the pdb70 database
+            (default False). This leads to better results, however it takes
+            longer and requires the UniRef30 database on your system.
+        iterations : int
+            Number of iterations when querying the pdb70 database.
+        n_threads : int
+            Number of threads when querying the pdb70 (or UniRef30) database
+            (default 2).
+        mact : float
+            The mact value used when querying the pdb70 database
+            (default 0.35).
+        neffmax : float
+            The neffmax value used when querying the pdb70 database
+            (default 10.0).
+        verbose : bool
+            Explain which operations are performed (default False).
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            Alignment has already been generated.
+
+        Notes
+        -----
+        Details about hhblits TODO
+
+        For more information on mact and neffmax, please check the hhblits
+        documentation.
+
+        If UniRef30 is used to generate a prealignment, then hhblits will be
+        called for one iteration with standard parameters.
+
+        Details about the database names... TODO
+        '''  # TODO (do I need Returns if None is returned?, check for other
+        # docstrings as well)
         # check state
         self._check_state(has_alignment=False, is_processed=False)
+
+        # init verbose
+        if verbose:
+            def vprint(*args, **kwargs):
+                for arg in args:
+                    print(arg, **kwargs)
+        else:
+            def vprint(*args):
+                pass
 
         # create query file
         # TODO if mode slow, query file is output from hhblits against uniref30
@@ -1890,19 +1947,38 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
             file_handler.write(f'>{self.target}\n')
             file_handler.write(f'{self.target_seq}')
 
+        # Uniref enrichment
+        if use_uniref:
+            vprint('UniRef prealignment...')
+            vprint('This might take some time...')
+            database_uniref30 = os.path.join(database_dir, 'UniRef30')
+            a3m_file = os.path.realpath(f'{self.target}_query.a3m')
+            command = [
+                'hhblits', '-i', query_file, '-d', database_uniref30, '-oa3m',
+                a3m_file, '-n', '1', '-cpu', str(n_threads), '-v', '1']
+            subprocess.run(command, stdout=None, check=True, shell=False)
+            # replace query file with output alignment
+            shutil.move(a3m_file, query_file)
+            vprint('UniRef prealignment completed!\n')
+
         # run hhblits
         database_pdb70 = os.path.join(database_dir, 'pdb70')
-        hhr_file = os.path.realpath(f'{self.target}.hrr')
+        hhr_file = os.path.realpath(f'{self.target}.hhr')
         a3m_file = os.path.realpath(f'{self.target}.a3m')
+
+        vprint('Performing PDB database search...')
         command = [
             'hhblits', '-i', query_file, '-d', database_pdb70, '-o', hhr_file,
             '-oa3m', a3m_file, '-n', str(iterations), '-all', '-cpu',
             str(n_threads), '-mact', str(mact), '-neffmax', str(neffmax), '-v',
             '1']
         subprocess.run(command, stdout=None, check=True, shell=False)
+        vprint('PDB database search completed!')
         # TODO filtering of alignment by evalue: currently -e 0.001
+        # could be made a feature
 
         # run reformat.pl
+        vprint('Import alignment...')
         fasta_file = os.path.realpath(f'{self.target}.fasta_aln')
         command = ['reformat.pl', 'a3m', 'fas', a3m_file, fasta_file, '-v0']
         subprocess.run(command, stdout=None, check=True, shell=False)
@@ -1912,7 +1988,7 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
         aln = Alignment(fasta_file)  # unfiltered alignment
         aln_filtered = Alignment(None)  # final alignment
         aln_filtered.sequences = {self.target: aln.sequences[self.target]}
-        templates = []  # parse from hrr file
+        templates = []  # parse from hhr file
 
         with open(hhr_file, 'r') as file_handler:
             results = file_handler.read()
@@ -1936,9 +2012,12 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
                 k: v for k, v in sequences_filtered.items() if v is not None})
         aln_filtered.remove_redundant_gaps()
         self.alignment = aln_filtered
+        vprint('Alignment imported!')
 
         # update state
         self.state['has_alignment'] = True
+
+        # TODO remove temporary files?
 
         # TODO
         # The returned alignments contain not the full template sequences, but
