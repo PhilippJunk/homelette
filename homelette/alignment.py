@@ -1948,25 +1948,3 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
         # PDB?
         # I think I should go for the second one but boy.... why is all of this
         # so complicated?
-
-
-class AlignmentGenerator_hmmer(AlignmentGenerator):
-    '''
-    '''
-    # NOTES
-    # github https://github.com/EddyRivasLab/hmmer
-    # documentation https://github.com/EddyRivasLab/hmmer
-    # not sure if I can just used a downloaded PDB sequence database?
-    # if so, these would contain ID_CHAIN nomenclature
-    # is there a HMMER docker container? try out?
-
-    def get_suggestion(self):
-        '''
-        '''  # TODO
-        # check state
-        self._check_state(has_alignment=False, is_processed=False)
-        # TODO
-        # update state
-        self.state['has_alignment'] = True
-        pass
-# TODO maybe implement dependency check for non-python packages?
