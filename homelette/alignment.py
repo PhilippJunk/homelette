@@ -36,7 +36,6 @@ import json
 import os.path
 import re
 import subprocess
-import time
 import typing
 import urllib.error
 import urllib.parse
@@ -1303,69 +1302,79 @@ class AlignmentGenerator(abc.ABC):
         df_coverage = self.alignment.calc_coverage_target(self.target)
         df_identity = self.alignment.calc_identity_target(self.target)
 
-        # Fetch annotation from RCSB
-        templates = list(set(
-            [t[0:4] for t in self.alignment.sequences if t != self.target]))
-        url = 'https://data.rcsb.org/graphql?'
+        if get_metadata:
+            # Fetch annotation from RCSB
+            templates = list(set(
+                [t[0:4] for t in self.alignment.sequences
+                    if t != self.target]))
+            url = 'https://data.rcsb.org/graphql?'
 
-        # query for structure annotation
-        # Documentation of query API:
-        # https://data.rcsb.org/index.html
-        query = f'''query={{
- entries(entry_ids: {templates!r}) {{
-  rcsb_id
-  struct {{
-   title
-  }}
-  exptl {{
-   method
-  }}
-  rcsb_entry_info {{
-   resolution_combined
-  }}
- }}
-}}
-'''
-        # format query
-        query = query.replace("'", '"')
-        # encode URL
-        query = urllib.parse.quote(query, safe='=():,')
+            # query for structure annotation
+            # Documentation of query API:
+            # https://data.rcsb.org/index.html
+            query = (
+                f'query={{'
+                f' entries(entry_ids: {templates!r}) {{'
+                f'  rcsb_id'
+                f'  struct {{'
+                f'   title'
+                f'  }}'
+                f'  exptl {{'
+                f'   method'
+                f'  }}'
+                f'  rcsb_entry_info {{'
+                f'   resolution_combined'
+                f'  }}'
+                f' }}'
+                f'}}'
+                )
+            # format query
+            query = query.replace("'", '"')
+            # encode URL
+            query = urllib.parse.quote(query, safe='=():,')
 
-        # access query
-        with urllib.request.urlopen(url + query) as response:
-            # check status
-            if response.status == 200:
-                response_decoded = json.loads(response.read().decode(
-                    'utf-8'))
+            # access query
+            with urllib.request.urlopen(url + query) as response:
+                # check status
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
 
-        # extract data
-        annot_id = []
-        for r in response_decoded['data']['entries']:
-            annot_id.append([
-                r['rcsb_id'],
-                r['exptl'][0]['method'],
-                r['rcsb_entry_info']['resolution_combined'][0],
-                r['struct']['title'],
-                ])
-        df_annotation = pd.DataFrame(annot_id, columns=[
-            'pdbid', 'method', 'resolution', 'title'])
+            # extract data
+            annot_id = []
+            for r in response_decoded['data']['entries']:
+                annot_id.append([
+                    r['rcsb_id'],
+                    r['exptl'][0]['method'],
+                    r['rcsb_entry_info']['resolution_combined'][0],
+                    r['struct']['title'],
+                    ])
+            df_annotation = pd.DataFrame(annot_id, columns=[
+                'pdbid', 'method', 'resolution', 'title'])
 
         # combine data frames
         output = (
             pd.merge(df_coverage, df_identity, on=('sequence_1', 'sequence_2'))
             # remove column with sequence_1 and rename sequence_2
             .drop('sequence_1', axis=1)
-            .rename({'sequence_2': 'template'}, axis=1)
-            .assign(pdbid=lambda df: df['template'].map(
-                lambda template: template[0:4]))
-            )
-        output = (
-            pd.merge(output, df_annotation, on=('pdbid', 'pdbid'))
             # sort values
             .sort_values(by=['identity', 'coverage'], ascending=[False, False])
-            # remove merge column
-            .drop('pdbid', axis=1)
+            .rename({'sequence_2': 'template'}, axis=1)
             )
+        if get_metadata:
+            output = (
+                output
+                .assign(pdbid=lambda df: df['template'].map(
+                    lambda template: template[0:4]))
+                )
+            output = (
+                pd.merge(output, df_annotation, on=('pdbid', 'pdbid'))
+                # sort values
+                .sort_values(by=['identity', 'coverage'],
+                             ascending=[False, False])
+                # remove merge column
+                .drop('pdbid', axis=1)
+                )
 
         return output
 
