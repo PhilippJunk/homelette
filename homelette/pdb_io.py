@@ -61,11 +61,29 @@ class PdbObject:
     Notes
     -----
     Please contruct instances of PdbObject using the constructor functions.
+
+    If a PDB file with multiple MODELs is read, only the first model will be
+    conserved.
     '''
     def __init__(self, lines: typing.Iterable) -> None:
-        # filter for ATOM and HETATM records
-        self.lines = [line for line in lines if line.startswith('ATOM') or
-                      line.startswith('HETATM')]
+        # filter for ATOM, HETATM, MODEL and TER records
+        lines = [line for line in lines if
+                 line.startswith('ATOM') or
+                 line.startswith('HETATM') or
+                 line.startswith('TER') or
+                 line.startswith('MODEL')]
+        # if multiple models are present, choose the first one
+        models = 0
+        new_lines = list()
+        for line in lines:
+            if line.startswith('MODEL'):
+                models += 1
+                if models > 1:
+                    break
+            else:
+                new_lines.append(line)
+
+        self.lines = new_lines
 
     def write_pdb(self, file_name) -> None:
         '''
@@ -354,6 +372,11 @@ def read_pdb(file_name: str) -> PdbObject:
     Returns
     -------
     PdbObject
+
+    Notes
+    -----
+    If a PDB file with multiple MODELs is read, only the first model will be
+    conserved.
     '''
     with open(file_name, 'r') as file_handle:
         return PdbObject(file_handle.read().splitlines(keepends=True))
@@ -371,6 +394,11 @@ def download_pdb(pdbid: str) -> PdbObject:
     Returns
     -------
     PdbObject
+
+    Notes
+    -----
+    If a PDB file with multiple MODELs is read, only the first model will be
+    conserved.
     '''
     # adapted from https://stackoverflow.com/a/7244263/7912251
     url = 'https://files.rcsb.org/download/' + pdbid + '.pdb.gz'
