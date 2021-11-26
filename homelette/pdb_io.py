@@ -356,7 +356,7 @@ def read_pdb(file_name: str) -> PdbObject:
     PdbObject
     '''
     with open(file_name, 'r') as file_handle:
-        return PdbObject(file_handle.read().splitlines())
+        return PdbObject(file_handle.read().splitlines(keepends=True))
 
 
 def download_pdb(pdbid: str) -> PdbObject:
@@ -377,4 +377,4 @@ def download_pdb(pdbid: str) -> PdbObject:
     with urllib.request.urlopen(url) as response:
         with gzip.GzipFile(fileobj=response) as uncompressed:
             pdb = uncompressed.read().decode('utf-8')
-    return PdbObject(pdb.splitlines())
+    return PdbObject(pdb.splitlines(keepends=True))
