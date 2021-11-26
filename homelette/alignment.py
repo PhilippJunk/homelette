@@ -48,6 +48,7 @@ import pandas as pd
 
 # Local application imports
 from . import pdb_io
+from .organization import Task
 
 
 class Sequence():
@@ -1340,6 +1341,10 @@ class AlignmentGenerator(abc.ABC):
                 if response.status == 200:
                     response_decoded = json.loads(response.read().decode(
                         'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                        f'Unknown URL status: expected 200, got '
+                        f'{response.status}')
 
             # extract data
             annot_id = []
@@ -1392,7 +1397,6 @@ class AlignmentGenerator(abc.ABC):
         selection = ['target'] + list(templates)
         self.alignment.select_sequences(selection)
 
-    # TODO name of the function? download_templates?
     def get_pdbs(self, pdb_format: str = 'auto', verbose: bool = True) -> None:
         '''
         Downloads and processes templates present in alignment.
@@ -1418,10 +1422,8 @@ class AlignmentGenerator(abc.ABC):
 
         * auto: Automatic guess for pdb_format
         * entry: Sequences are named only be their PDB identifier (i.e. 4G0N)
-        * polymer_entity: Sequences are named in the format PDBID_ENTITY (i.e.
-        4G0N_1)
-        * polymer_entity_instance: Sequences are named in the format
-        PDBID_CHAIN (i.e. 4G0N_A)
+        * entity: Sequences are named in the format PDBID_ENTITY (i.e. 4G0N_1)
+        * instance: Sequences are named in the format PDBID_CHAIN (i.e. 4G0N_A)
         '''
         # check state
         self._check_state(has_alignment=True, is_processed=False)
@@ -1437,30 +1439,247 @@ class AlignmentGenerator(abc.ABC):
             def vprint(*args):
                 pass
 
-        def parse_alignment(alignment: Alignment, templates: typing.Iterable,
-                            pdb_format) -> dict:
+        def get_entities_from_entries(templates, alignment) -> (dict, dict):
             '''
-            '''  # TODO
-            out = {}
-            for template in templates:
-                # get PDBID
-                pdbid = template[0:4]
+            For an alignment with PDB entry identifiers (i.e. 1LFD), create
+            mapping of entry identifiers to the entity identifiers (i.e.
+            1LFD_1) and download entity information.
+            '''
+            # get number of entities for each entry
+            url = 'https://data.rcsb.org/graphql?'
+            query = (
+                f'query={{'
+                f' entries(entry_ids: '
+                f' {templates!r}) {{'
+                f'  rcsb_id'
+                f'  rcsb_entry_info {{'
+                f'   polymer_entity_count_protein'
+                f'  }}'
+                f' }}'
+                f'}}'
+                )
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
 
-                # include in out dict
-                if pdbid not in out.keys():
-                    out[pdbid] = list()
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                        f'Unknown URL status: expected 200, got '
+                        f'{response.status}')
 
-                # collect information about alignment entry
-                aln_entry = {
-                        'template': template,
-                        'sequence': alignment.sequences[template],
-                        }
-                if pdb_format == 'chain':
-                    aln_entry['chain'] = template[5]
+            entities = list()
+            for r in response_decoded['data']['entries']:
+                entry = r['rcsb_id']
+                entity_count = (
+                    r['rcsb_entry_info']['polymer_entity_count_protein'])
+                for entity_num in range(1, entity_count+1):
+                    entities.append(f'{entry}_{entity_num}')
 
-                out[pdbid].append(aln_entry)
+            # pull sequence information for all entities
+            query = (f'query={{'
+                     f' polymer_entities (entity_ids: {entities!r}) {{'
+                     f'  rcsb_id'
+                     f'  entity_poly {{'
+                     f'   pdbx_seq_one_letter_code_can'
+                     f'   pdbx_strand_id'
+                     f'  }}'
+                     f' }}'
+                     f'}}'
+                     )
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
 
-            return out
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200, got '
+                            f'{response.status}')
+
+            entities = dict()
+            for r in response_decoded['data']['polymer_entities']:
+                entity = r['rcsb_id']
+                seq = r['entity_poly']['pdbx_seq_one_letter_code_can']
+                chains = r['entity_poly']['pdbx_strand_id'].split(',')
+                entities[entity] = {
+                        'sequence': seq,
+                        'chains': chains}
+
+            # match entries with entities based on entities
+            mapping = dict()
+            for template in alignment.sequences:
+                for entity in entities:
+                    if template != entity[0:4]:
+                        continue
+                    seq_alignment = (
+                        alignment.sequences[template].sequence
+                        .replace('-', ''))
+                    seq_entity = entities[entity]['sequence']
+                    seq_match = re.search(seq_alignment, seq_entity)
+                    if seq_match is not None:
+                        mapping[entity] = [{'entry': template,
+                                            'aln_name': template}]
+
+            # filter entities so that only matched entities remain
+            entities = {
+                entity: seq for entity, seq in entities.items() if entity in
+                mapping.keys()}
+
+            return (mapping, entities)
+
+        def get_entities_from_instances(templates, alignment) -> (dict, dict):
+            '''
+            For a list of templates with PDB polymer instance identifiers (i.e.
+            1LFD_A), create mapping of instance identifiers to the entity
+            identifiers (i.e. 1LFD_1) and download entity information.
+            '''
+            # make sure instances are correctly formatted
+            templates_formatted = {f'{t[0:4]}.{t[5]}': t for t in templates}
+            # pull entity information for all instances
+            url = 'https://data.rcsb.org/graphql?'
+            query = (
+                f'query={{'
+                f' polymer_entity_instances(instance_ids: '
+                f' {list(templates_formatted.keys())!r}) {{'
+                f'  rcsb_id'
+                f'  rcsb_polymer_entity_instance_container_identifiers {{'
+                f'   entity_id'
+                f'  }}'
+                f' }}'
+                f'}}'
+                )
+
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
+
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                        f'Unknown URL status: expected 200, got '
+                        f'{response.status}')
+
+            # parse entity information
+            mapping = dict()
+            for r in response_decoded['data']['polymer_entity_instances']:
+                instance = r['rcsb_id']
+                entity = (
+                    instance[0:4] + '_' +
+                    r['rcsb_polymer_entity_instance_container_identifiers']
+                    ['entity_id'])
+                if entity in mapping.keys():
+                    mapping[entity].append(
+                        {'instance': instance,
+                         'aln_name': templates_formatted[instance]})
+                else:
+                    mapping[entity] = [
+                            {'instance': instance,
+                             'aln_name': templates_formatted[instance]}]
+
+            # pull sequences for entites from RCSB
+            query = (f'query={{'
+                     f' polymer_entities (entity_ids:'
+                     f' {list(mapping.keys())!r}) {{'
+                     f'  rcsb_id'
+                     f'  entity_poly {{'
+                     f'   pdbx_seq_one_letter_code_can'
+                     f'   pdbx_strand_id'
+                     f'  }}'
+                     f' }}'
+                     f'}}'
+                     )
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
+
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200, got '
+                            f'{response.status}')
+
+            entities = dict()
+            for r in response_decoded['data']['polymer_entities']:
+                entity = r['rcsb_id']
+                seq = r['entity_poly']['pdbx_seq_one_letter_code_can']
+                chains = r['entity_poly']['pdbx_strand_id'].split(',')
+                entities[entity] = {
+                        'sequence': seq,
+                        'chains': chains}
+
+            # check that, if multiple instances are assigned a common identity,
+            # their alignment is identical
+            for entity, instances in mapping.items():
+                if len(instances) > 1:
+                    seqs_instances = [
+                        alignment.sequences[instance['aln_name']].sequence for
+                        instance in instances]
+                    if len(set(seqs_instances)) != 1:
+                        raise RuntimeError(
+                            f'Entity: {entity}\n'
+                            f'Found instances of the same PDB entity, but with'
+                            f' different alignments. Since all instances of an'
+                            f' entity share a sequence, this should not '
+                            f'happen!\n'
+                            f'Select one of the instances before running '
+                            f'get_pdbs.')
+
+            return (mapping, entities)
+
+        def get_entities_from_entities(templates, alignment) -> (dict, dict):
+            '''
+            Process templates and alignment to mapping of entities to entries
+            in the alignment and download entity information.
+            '''
+            # make sure entity names are properly formatted
+            mapping = {f'{t[0:4]}_{t[5]}': [{
+                'entity': f'{t[0:4]}_{t[5]}',
+                'aln_name': t}] for t in templates}
+
+            # pull sequences for entites from RCSB
+            url = 'https://data.rcsb.org/graphql?'
+            query = (f'query={{'
+                     f' polymer_entities (entity_ids:'
+                     f' {list(mapping.keys())!r}) {{'
+                     f'  rcsb_id'
+                     f'  entity_poly {{'
+                     f'   pdbx_seq_one_letter_code_can'
+                     f'   pdbx_strand_id'
+                     f'  }}'
+                     f' }}'
+                     f'}}'
+                     )
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
+
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200, got '
+                            f'{response.status}')
+
+            entities = dict()
+            for r in response_decoded['data']['polymer_entities']:
+                entity = r['rcsb_id']
+                seq = r['entity_poly']['pdbx_seq_one_letter_code_can']
+                chains = r['entity_poly']['pdbx_strand_id'].split(',')
+                entities[entity] = {
+                        'sequence': seq,
+                        'chains': chains}
+
+            return (mapping, entities)
 
         def adjust_template_seq(seq_alignment: str,
                                 seq_template: str):
@@ -1487,18 +1706,6 @@ class AlignmentGenerator(abc.ABC):
 
             return seq_template_padded
 
-        def process_template_pdb(pdb, pdb_file_name, template_location):
-            '''
-            Remove HOH, renumber residues, rename chain ID, save to file.
-            '''
-            pdb = (
-                pdb
-                .transform_filter_res_name(['HOH'])
-                .transform_renumber_residues(starting_res=1)
-                .transform_change_chain_id(new_chain_id='A'))
-            pdb.write_pdb(os.path.join(
-                template_location, pdb_file_name))
-
         def add_seq_to_aln(aln, seq_name, old_sequence, new_sequence):
             '''
             Adds sequence to alignment, then performs sequence replacement and
@@ -1516,6 +1723,11 @@ class AlignmentGenerator(abc.ABC):
 
             return aln
 
+        # list of 3 letter amino acid code
+        amino_acids = ['ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLU', 'GLN', 'GLY',
+                       'HIS', 'ILE', 'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER',
+                       'THR', 'TRP', 'TYR', 'VAL', 'SEC']
+
         # check pdb_format
         templates = [template for template in self.alignment.sequences.keys()
                      if template != self.target]
@@ -1523,19 +1735,12 @@ class AlignmentGenerator(abc.ABC):
             vprint('Guessing template naming format...')
             pdb_format = self._guess_pdb_format_from_aln()
             vprint(f'Template naming format guessed: {pdb_format}!\n')
-        elif pdb_format not in ['chain', 'identifier', 'entity']:
+        elif pdb_format not in ['entry', 'polymer_entity',
+                                'polymer_entity_instance']:
             raise ValueError(
                 f'Invalid value to pdb_format: {pdb_format}\nHas to be one of '
-                f'"auto", "chain", "entity", "identifier".')
-
-        # TODO NOTES
-        # Thoughts about how to incorporate sequences which might not be the
-        # full sequence (hhblits) in the retrieval of pdb structures
-        # Consider (again) to raise a request for the full sequences to the PDB
-        # If full sequence matches seqeunce in the alignment, no change
-        # If not, find which fragment we are talking about
-        # Perform padding as usual
-        # Remove parts of the structure prior to more processing
+                f'"auto", "entry", "polymer_entity", '
+                f'"polymer_entity_instance".')
 
         # Initialize template dir
         vprint('Checking template dir...')
@@ -1547,83 +1752,94 @@ class AlignmentGenerator(abc.ABC):
         else:
             vprint('Template dir found!\n')
 
-        # parse templates
-        templates_parsed = parse_alignment(self.alignment, templates,
-                                           pdb_format)
+        # depending on the format, extract mapping of templates to pdb entities
+        # as well as sequences and chains for these entities from PDB
         vprint('Processing templates:\n')
+        if pdb_format == 'entry':
+            mapping, entities = get_entities_from_entries(
+                    templates, self.alignment)
+        elif pdb_format == 'polymer_entity':
+            mapping, entities = get_entities_from_entities(
+                    templates, self.alignment)
+        elif pdb_format == 'polymer_entity_instance':
+            mapping, entities = get_entities_from_instances(
+                    templates, self.alignment)
 
         # initialize changed alignment
         new_aln = Alignment(None)
         new_aln.sequences = {
                 self.target: self.alignment.sequences[self.target]}
 
-        # iterate over PDB identifier
-        for pdbid in templates_parsed:
+        # compare sequences from the alignment and the entities to find out if
+        # template structures need to be clipped
+        # (i.e. hhblits does not necessary include the full template sequence
+        # in its alignment, so to properly process it, we need to find out
+        # which parts are included and remove the rest from the template)
+
+        for entity in mapping:
+            # get sequences
+            seq_alignment = (
+                self.alignment.sequences[mapping[entity][0]['aln_name']]
+                .sequence.replace('-', ''))
+            seq_entity = entities[entity]['sequence']
+            # find first set of indexes: where to clip the alignment
+            index_first_res_clipped, index_last_res_clipped = re.search(
+                    seq_alignment, seq_entity).span()
             # download template
-            vprint(f'{pdbid} downloading from PDB...')
-            pdb = pdb_io.download_pdb(pdbid)
-            vprint(f'{pdbid} downloaded!')
+            vprint(f'{entity[0:4]} downloading from PDB...')
+            pdb = pdb_io.download_pdb(entity[0:4])
+            vprint(f'{entity[0:4]} downloaded!')
+            # iterate over chains
+            for chain in entities[entity]['chains']:
+                pdb_chain = pdb.transform_extract_chain(chain)
+                vprint(f'{entity[0:4]}_{chain}: Chain extracted!')
+                seq_template = pdb_chain.get_sequence(ignore_missing=False)
+                try:
+                    seq_template_padded = adjust_template_seq(
+                            seq_entity, seq_template)
+                except RuntimeError as exc:
+                    msg = f'{entity[0:4]}_{chain}'
+                    raise RuntimeError(msg) from exc
+                # get first and last residue from template pdb
+                pdb_chain_onlyprotein = pdb_chain.transform_filter_res_name(
+                        amino_acids, mode='in')
+                template_res_span = (
+                    int(pdb_chain_onlyprotein.lines[0][22:26]),
+                    int(pdb_chain_onlyprotein.lines[-1][22:26]))
+                # get index of first and last residue in alignment
+                for i, res in enumerate(seq_template_padded):
+                    if res != 'X':
+                        index_first_res_template = i
+                        break
+                for i, res in enumerate(seq_template_padded[::-1]):
+                    if res != 'X':
+                        index_last_res_template = len(seq_template_padded) - i
+                        break
+                # calculate residue range to clip from indices
+                lower = (template_res_span[0] + index_first_res_clipped -
+                         index_first_res_template)
+                upper = (template_res_span[1] + index_last_res_clipped -
+                         index_last_res_template)
+                # adjust template structure
+                pdb_chain = pdb_chain.transform_filter_res_seq(lower, upper)
+                # update alignment
+                new_aln = add_seq_to_aln(
+                    new_aln, f'{entity[0:4]}_{chain}',
+                    (self.alignment.sequences[mapping[entity][0]['aln_name']]
+                     .sequence),
+                    (seq_template_padded
+                     [index_first_res_clipped:index_last_res_clipped]))
+                vprint(f'{entity[0:4]}_{chain}: Alignment updated!')
 
-            # different behaviour whether we know which chains to extract
-            # (pdb_format == 'chain'), or need to check which chains fit the
-            # entity (pdb_format != 'chain')
-            if pdb_format == 'chain':
-                for chain_info in templates_parsed[pdbid]:
-                    template_name = chain_info['template']
-                    chain = chain_info['chain']
-                    seq_alignment = chain_info['sequence'].sequence.replace(
-                            '-', '')
-                    pdb_chain = pdb.transform_extract_chain(chain)
-                    vprint(f'{pdbid}_{chain}: Chain extracted!')
-                    seq_template = pdb_chain.get_sequence(ignore_missing=False)
-                    try:
-                        seq_template_padded = adjust_template_seq(
-                                seq_alignment, seq_template)
-                    except RuntimeError as exc:
-                        msg = f'Template: {pdbid}_{chain}'
-                        raise RuntimeError(msg) from exc
-
-                    new_aln = add_seq_to_aln(
-                        new_aln, f'{pdbid}_{chain}',
-                        self.alignment.sequences[template_name].sequence,
-                        seq_template_padded)
-                    vprint(f'{pdbid}_{chain}: Alignment updated!')
-
-                    process_template_pdb(pdb_chain, f'{pdbid}_{chain}.pdb',
-                                         self.template_location)
-                    vprint(f'{pdbid}_{chain}: PDB processed!')
-
-            # if template were not given with chain identifiers, iterate over
-            # all combinations of entities and chains and try to match them
-            else:
-                for entity_info, chain in itertools.product(
-                        templates_parsed[pdbid], pdb.get_chains()):
-                    template_name = entity_info['template']
-                    seq_alignment = entity_info['sequence'].sequence.replace(
-                            '-', '')
-                    pdb_chain = pdb.transform_extract_chain(chain)
-                    seq_template = pdb_chain.get_sequence(
-                            ignore_missing=False)
-                    try:
-                        seq_template_padded = adjust_template_seq(
-                                seq_alignment, seq_template)
-                    except RuntimeError:
-                        # if not matching, dont continue loop
-                        continue
-
-                    vprint(f'{pdbid}_{chain}: Chain extracted!')
-
-                    # update alignment
-                    new_aln = add_seq_to_aln(
-                        new_aln, f'{pdbid}_{chain}',
-                        self.alignment.sequences[template_name].sequence,
-                        seq_template_padded)
-                    vprint(f'{pdbid}_{chain}: Alignment updated!')
-
-                    # process template pdb
-                    process_template_pdb(pdb_chain, f'{pdbid}_{chain}.pdb',
-                                         self.template_location)
-                    vprint(f'{pdbid}_{chain}: PDB processed!')
+                # process template
+                pdb_chain = (
+                    pdb_chain
+                    .transform_filter_res_name(['HOH'])
+                    .transform_renumber_residues(starting_res=1)
+                    .transform_change_chain_id(new_chain_id='A'))
+                pdb_chain.write_pdb(os.path.join(
+                    self.template_location, f'{entity[0:4]}_{chain}.pdb'))
+                vprint(f'{entity[0:4]}_{chain}: PDB processed!')
 
         # update alignment
         self.alignment = new_aln
@@ -1632,6 +1848,27 @@ class AlignmentGenerator(abc.ABC):
         vprint(f'\nFinishing... All templates successfully\ndownloaded and '
                f'processed!\nTemplates can be found in\n'
                f'"{self.template_location}".')
+
+    def initialize_task(self) -> Task:
+        '''
+        Initialize a homelette Task object for model generation and evaluation.
+
+        Returns
+        -------
+        Task
+
+        Raises
+        ------
+        RuntimeError
+            Alignment has not been generated or templates have not been
+            downloaded and processed.
+        '''
+        # check state
+        self._check_state(has_alignment=True, is_processed=True)
+        return Task(
+                task_name=f'models_{self.target}',
+                target=self.target,
+                alignment=self.alignment)
 
 
 # TODO remove after testing
@@ -1976,6 +2213,10 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
         vprint('PDB database search completed!')
         # TODO filtering of alignment by evalue: currently -e 0.001
         # could be made a feature
+        # TODO WARNING: 	maximum number of 65535 sequences exceeded while
+        # reading 6U4K_A. Skipping all following sequences of this MSA
+        # properly understand it and also ignore it!
+        # can be reproduced by RASSF5 seq together with -all flag
 
         # run reformat.pl
         vprint('Import alignment...')
