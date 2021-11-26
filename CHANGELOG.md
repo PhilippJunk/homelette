@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 ### Added
 - Added loop modelling routines: `routines.Routine_loopmodel_default` and `Routine_loopmodel_slow`, build on the base class `routines.Routine_loopmodel`
+- Classes for, given a target sequence, automatically searching for 
+potential templates and generating alignments using different methods:
+ - Base class: `alignment.AlignmentGenerator`
+ - Classes for application: `alignment.AlignmentGenerator_pdb` and `alignment.AlignmentGenerator_hhblits`
+- Added Tutorial 8 about automatic generation of alignments.
+- Methods for checking coverage between sequences in alignments:
+ - `alignment.Alignment.calc_coverage`
+ - `alignment.Alignment.calc_coverage_target`
+ - `alignment.Alignment.calc_pairwise_coverage_all`
+- `pdb_io` submodule for pooling functionality that is internally used to handle PDB files.
 - Added .gitignore file.
 
 ### Fixed

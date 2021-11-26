@@ -47,6 +47,7 @@ import typing
 import pandas as pd
 
 # Local application imports
+from . import pdb_io
 
 # Local imports for type checking
 # taken from https://stackoverflow.com/a/39757388/7912251
@@ -179,7 +180,7 @@ class Task():
             sequence named "1WXN" to be used as a template, it is expected that
             there will be a PDB file named "1WXN.pdb" in the specified template
             location (default is current working directory)
-        **kwargs :
+        **kwargs
             Named parameters passed directly on to the Routine object when the
             modelling is performed. Please check the documentation in order to
             make sure that the parameters passed on are available with the
@@ -317,8 +318,6 @@ class Model():
         ``Task.execute_routine`` for more details)
     routine : str
         The name of the routine that was used to generate this model
-    sequence : str
-        The sequence of the modelled structure (default None)
 
     Attributes
     ----------
@@ -366,34 +365,7 @@ class Model():
         (version 3.30) and columns are named accordingly. See
         https://www.wwpdb.org/documentation/file-format for more information.
         '''
-        # read file
-        with open(self.model_file, 'r') as f:
-            lines = f.readlines()
-
-        # parse
-        out = []
-        for line in lines:
-            if line.startswith('ATOM') or line.startswith('HETATM'):
-                out.append({
-                    'record': line[0:6].strip(),
-                    'serial': int(line[6:11]),
-                    'name': line[12:16].strip(),
-                    'altLoc': line[16].strip(),
-                    'resName': line[17:20].strip(),
-                    'chainID': line[21].strip(),
-                    'resSeq': int(line[22:26]),
-                    'iCode': line[26].strip(),
-                    'x': float(line[30:38]),
-                    'y': float(line[38:46]),
-                    'z': float(line[46:54]),
-                    'occupancy': float(line[54:60]),
-                    'tempFactor': float(line[60:66]),
-                    'element': line[76:78].strip(),
-                    'charge': line[78:80].strip(),
-                })
-
-        # concat to pd.DataFrame
-        return pd.DataFrame(out)
+        return pdb_io.read_pdb(self.model_file).parse_to_pd()
 
     def get_sequence(self) -> str:
         '''
@@ -405,31 +377,7 @@ class Model():
         str
             Amino acid sequence
         '''
-        def _321(aa):
-            '''
-            Transform 3 letter amino acid code to 1 letter code
-            '''
-            aa_code = {'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D',
-                       'CYS': 'C', 'GLU': 'E', 'GLN': 'Q', 'GLY': 'G',
-                       'HIS': 'H', 'ILE': 'I', 'LEU': 'L', 'LYS': 'K',
-                       'MET': 'M', 'PHE': 'F', 'PRO': 'P', 'SER': 'S',
-                       'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V',
-                       'SEC': 'U'}
-            return aa.map(aa_code)
-
-        pdb = self.parse_pdb()
-        # extract residues from pdb df
-        residues = (
-                pdb[pdb.record.eq('ATOM')][['chainID', 'resSeq', 'resName']]
-                .groupby(['chainID', 'resSeq', 'resName'])
-                .count()
-                .reset_index()
-        )
-        # transform residues from 3 letter to 1 letter code
-        residues = (
-                residues.assign(resName=_321(residues['resName']))
-        )
-        return ''.join(residues['resName'].tolist()).upper()
+        return pdb_io.read_pdb(self.model_file).get_sequence()
 
     def rename(self, new_name: str) -> None:
         '''

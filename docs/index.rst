@@ -36,6 +36,7 @@ For a more interactive experience, all tutorials are available as Jupyter Notebo
    Tutorial 5: Parallelization <Tutorial5_Parallelization.ipynb>
    Tutorial 6: Complex Modelling <Tutorial6_ComplexModelling.ipynb>
    Tutorial 7: Assembling Modelling Pipelines <Tutorial7_AssemblingPipelines.ipynb>
+   Tutorial 8: Automatic Alignment Generation <Tutorial8_AlignmentGeneration.ipynb>
 
 
 API Documentation
@@ -50,6 +51,7 @@ This is the documentation for all classes, methods and functions in homelette.
    Sequences and Alignments <alignment>
    Routines <routines>
    Evaluation <evaluation>
+   PDB File interface <pdb_io>
 
 
 Extensions

@@ -91,6 +91,7 @@ notebooks = [
         '../examples/Tutorial5_Parallelization.ipynb',
         '../examples/Tutorial6_ComplexModelling.ipynb',
         '../examples/Tutorial7_AssemblingPipelines.ipynb',
+        '../examples/Tutorial8_AlignmentGeneration.ipynb',
 ]
 
 for notebook in notebooks:

@@ -3,7 +3,8 @@
 =======================
 
 The :mod:`homelette.alignment` submodule contains a selection of tools for
-handling sequences and alignments.
+handling sequences and alignments, as well as for the automatic generation of
+sequences from a target sequence.
 
 Tutorials
 ---------
@@ -11,7 +12,9 @@ Tutorials
 Basic handing of alignments with `homelette` is demonstrated in :ref:`Tutorial
 1 </Tutorial1_Basics.ipynb>`. The assembling of alignments for complex
 modelling is discussed in
-:ref:`Tutorial 6 </Tutorial6_ComplexModelling.ipynb>`.
+:ref:`Tutorial 6 </Tutorial6_ComplexModelling.ipynb>`. The automatic generation
+of alignments is shown in :ref:`Tutorial 8
+</Tutorial8_AlignmentGeneration.ipynb>`.
 
 Functions and classes
 ---------------------
@@ -20,23 +23,40 @@ Functions and classes present in `homelette.alignment` are listed below:
 
     :class:`Alignment`
     :class:`Sequence`
+    :class:`AlignmentGenerator`
+    :class:`AlignmentGenerator_pdb`
+    :class:`AlignmentGenerator_hhblits`
     :func:`assemble_complex_aln`
 
 -----
 
-'''
+'''  # TODO include AlignmentGenerator
 
-__all__ = ['Alignment', 'Sequence', 'assemble_complex_aln']
+__all__ = ['Alignment', 'Sequence', 'AlignmentGenerator',
+           'AlignmentGenerator_pdb', 'AlignmentGenerator_hhblits',
+           'assemble_complex_aln']
 
 # Standard library imports
+import abc
 import contextlib
 import itertools
+import json
+import os.path
 import re
+import shutil
+import subprocess
 import typing
+import urllib.error
+import urllib.parse
+import urllib.request
 import warnings
 
 #  Third party imports
 import pandas as pd
+
+# Local application imports
+from . import pdb_io
+from .organization import Task
 
 
 class Sequence():
@@ -380,8 +400,8 @@ class Alignment():
         -------
         None
         '''
-        with open(file_name, 'r') as f:
-            lines = f.readlines()
+        with open(file_name, 'r') as file_handler:
+            lines = file_handler.readlines()
 
         sequences = dict()  # dict that will replace self.sequences
         seq, seq_name = str(), str()  # temporary storage for name and sequence
@@ -438,8 +458,8 @@ class Alignment():
         -------
         None
         '''
-        with open(file_name, 'r') as f:
-            lines = f.readlines()
+        with open(file_name, 'r') as file_handler:
+            lines = file_handler.readlines()
 
         sequences = dict()  # dict that will replace self.sequences
         seq, seq_name = str(), str()  # temporary storage for name and sequence
@@ -542,15 +562,17 @@ class Alignment():
         -------
         None
         '''
-        with open(file_name, 'w') as f:
+        with open(file_name, 'w') as file_handler:
             for sequence_name, sequence in self.sequences.items():
                 # write name and annotation
-                f.write('>P1;{}\n'.format(sequence_name))
-                f.write('{}\n'.format(sequence.get_annotation_pir()))
+                file_handler.write('>P1;{}\n'.format(sequence_name))
+                file_handler.write(
+                    '{}\n'.format(sequence.get_annotation_pir()))
                 # write sequence with newline every nth character
-                f.write(re.sub(''.join(['(.{', str(line_wrap), '})']), '\\1\n',
-                        sequence.sequence, 0, re.DOTALL))
-                f.write('\n*\n')
+                file_handler.write(
+                    re.sub(''.join(['(.{', str(line_wrap), '})']), '\\1\n',
+                           sequence.sequence, 0, re.DOTALL))
+                file_handler.write('\n*\n')
 
     def write_fasta(self, file_name: str, line_wrap: int = 80) -> None:
         '''
@@ -567,14 +589,15 @@ class Alignment():
         -------
         None
         '''
-        with open(file_name, 'w') as f:
+        with open(file_name, 'w') as file_handler:
             for sequence_name, sequence in self.sequences.items():
                 # write name
-                f.write('>{}\n'.format(sequence_name))
+                file_handler.write('>{}\n'.format(sequence_name))
                 # write sequence with newline every nth character
-                f.write(re.sub(''.join(['(.{', str(line_wrap), '})']), '\\1\n',
-                        sequence.sequence, 0, re.DOTALL))
-                f.write('\n')
+                file_handler.write(
+                        re.sub(''.join(['(.{', str(line_wrap), '})']), '\\1\n',
+                               sequence.sequence, 0, re.DOTALL))
+                file_handler.write('\n')
 
     def print_clustal(self, line_wrap: int = 80) -> None:
         '''
@@ -592,7 +615,7 @@ class Alignment():
         # get sequence names and sequences and trim sequence_names
         sequences = [sequence.sequence for sequence in self.sequences.values()]
         sequence_names = [(name + '          ')[:10] for name in
-                          self.sequences.keys()]
+                          self.sequences]
         # assemble output
         while len(sequences[0]) != 0:
             new_sequences = list()
@@ -618,8 +641,8 @@ class Alignment():
         None
         '''
         # redirect output of self.print_clustal to file
-        with open(file_name, 'w') as f:
-            with contextlib.redirect_stdout(f):
+        with open(file_name, 'w') as file_handler:
+            with contextlib.redirect_stdout(file_handler):
                 self.print_clustal(line_wrap=line_wrap)
 
     def remove_redundant_gaps(self) -> None:
@@ -639,6 +662,81 @@ class Alignment():
         if len(intersection_gaps) != 0:
             for sequence in self.sequences.values():
                 sequence.remove_gaps(positions=intersection_gaps)
+
+    def replace_sequence(self, seq_name: str, new_sequence: str) -> None:
+        '''
+        Targeted replacement of sequence in alignment.
+
+        Parameters
+        ----------
+        seq_name : str
+            The identifier of the sequence that will be replaced.
+        new_sequence : str
+            The new sequence.
+
+        Notes
+        -----
+        This replacement is designed to introduce missing residues from
+        template structures into the alignment and therefore has very strict
+        requirements. The new and old sequence have to be identical, except
+        that the new sequence might contain unmodelled residues. These are
+        indicated by the letter 'X' in the new sequence, and will result in a
+        gap '-' in the alignment after replacement. It is important that all
+        unmodelled residues, even at the start or beginning of the template
+        sequence are correctly labeled as 'X'.
+
+        Examples
+        --------
+        >>> aln = hm.Alignment(None)
+        >>> aln.sequences = {
+        ...     'seq1': hm.alignment.Sequence('seq1', 'AAAACCCCDDDD'),
+        ...     'seq2': hm.alignment.Sequence('seq2', 'AAAAEEEEDDDD'),
+        ...     'seq3': hm.alignment.Sequence('seq3', 'AAAA----DDDD')
+        ...     }
+        >>> replacement_seq1 = 'AAAAXXXXXDDD'
+        >>> replacement_seq3 = 'AAXXXXDD'
+        >>> aln.replace_sequence('seq1', replacement_seq1)
+        >>> aln.print_clustal()
+        seq1        AAAA-----DDD
+        seq2        AAAAEEEEDDDD
+        seq3        AAAA----DDDD
+        >>> aln.replace_sequence('seq3', replacement_seq3)
+        >>> aln.print_clustal()
+        seq1        AAAA-----DDD
+        seq2        AAAAEEEEDDDD
+        seq3        AA--------DD
+        '''
+        # check if sequences fully match
+        if re.fullmatch(
+                new_sequence.upper().replace('X', r'\w'),
+                self.sequences[seq_name].sequence.upper().replace('-', '')
+                ) is None:
+            raise ValueError(
+                f'{seq_name}: New sequence does not match with sequence in '
+                'alignment.')
+
+        new_sequence = list(new_sequence.replace('-', '').upper())
+        old_sequence = list(self.sequences[seq_name].sequence.upper())
+        replaced_seq = list()
+        for old_res in old_sequence:
+            if old_res == '-':
+                # transfer gaps
+                replaced_seq.append(old_res)
+            else:
+                new_res = new_sequence.pop(0)
+                if old_res == new_res:
+                    # match
+                    replaced_seq.append(new_res)
+                elif old_res != new_res and new_res == 'X':
+                    # introduce gaps for unmodelled residues
+                    replaced_seq.append('-')
+                else:
+                    # after checking with re.fullmatch, this should never run
+                    raise ValueError(
+                        '{}: Mismatch detected'.format(seq_name))
+
+        # update sequence
+        self.sequences[seq_name].sequence = ''.join(replaced_seq)
 
     def calc_identity(self, sequence_name_1: str,
                       sequence_name_2: str) -> float:
@@ -798,12 +896,184 @@ class Alignment():
              {\\text{length}(\\text{sequence1})}
         '''
         output = {'sequence_1': [], 'sequence_2': [], 'identity': []}
-        for sequence_name_2 in self.sequences.keys():
+        for sequence_name_2 in self.sequences:
             if not sequence_name == sequence_name_2:
                 output['sequence_1'].append(sequence_name)
                 output['sequence_2'].append(sequence_name_2)
                 output['identity'].append(self.calc_identity(
                     sequence_name, sequence_name_2))
+        return pd.DataFrame(output)
+
+    def calc_coverage(self, sequence_name_1: str,
+                      sequence_name_2: str) -> float:
+        '''
+        Calculation of coverage of sequence 2 to sequence 1 in the alignment.
+
+        Parameters
+        ----------
+        sequence_name_1, sequence_name_2 : str
+            Sequence pair to calculate coverage for
+
+        Returns
+        -------
+        coverage : float
+            Coverage of sequence 2 to sequence 1
+
+        See Also
+        --------
+        calc_coverage_target
+        calc_pairwise_coverage_all
+
+        Notes
+        -----
+        Coverage in this context means how many of the residues in sequences 1
+        are assigned a residue in sequence 2. This is useful for evaluating
+        potential templates, because a low sequence identity (as implemented in
+        homelette) could be caused either by a lot of residues not being
+        aligned at all, or a lot of residues being aligned but not with
+        identical residues.
+
+        .. math::
+
+            \\text{coverage} = \\frac{\\text{aligned residues}}
+            {\\text{length}(\\text{sequence1})}
+
+        Examples
+        --------
+
+        Gaps and mismatches are not treated equally.
+
+        >>> aln = hm.Alignment(None)
+        >>> aln.sequences = {
+        ...     'seq1': hm.alignment.Sequence('seq1', 'AAAACCCCDDDD'),
+        ...     'seq2': hm.alignment.Sequence('seq2', 'AAAAEEEEDDDD'),
+        ...     'seq3': hm.alignment.Sequence('seq3', 'AAAA----DDDD')
+        ...     }
+        >>> aln.calc_coverage('seq1', 'seq2')
+        100.0
+        >>> aln.calc_coverage('seq1', 'seq3')
+        66.67
+
+        Normalization happens for the length of sequence 1, so the order of
+        sequences matters.
+
+        >>> aln = hm.Alignment(None)
+        >>> aln.sequences = {
+        ...     'seq1': hm.alignment.Sequence('seq1', 'AAAACCCCDDDD'),
+        ...     'seq2': hm.alignment.Sequence('seq3', 'AAAA----DDDD')
+        ...     }
+        >>> aln.calc_coverage('seq1', 'seq2')
+        66.67
+        >>> aln.calc_coverage('seq2', 'seq1')
+        100.0
+        '''
+        def _calc_coverage(sequence_1: typing.Iterable, sequence_2:
+                           typing.Iterable) -> float:
+            '''
+            Helper function for calculating sequence coverage
+
+            coverage = aligned_res / length(sequence_1)
+
+            Parameters
+            ----------
+            sequence_1, sequence_2 : Iterable
+                Sequence string transformed to list
+
+            Returns
+            -------
+            float
+            '''
+            aligned_res = 0
+            length = len([s for s in sequence_1 if s != '-'])
+            for res_1, res_2 in zip(sequence_1, sequence_2):
+                if res_1 != '-' and res_2 != '-':
+                    aligned_res += 1
+            return round(100 * aligned_res / length, 2)
+
+        # extract sequences of interest
+        sequence_1 = list(self.sequences[sequence_name_1].sequence)
+        sequence_2 = list(self.sequences[sequence_name_2].sequence)
+        return _calc_coverage(sequence_1, sequence_2)
+
+    def calc_coverage_target(
+            self, sequence_name: str) -> typing.Type['pd.DataFrame']:
+        '''
+        Calculate coverage of all sequences in the alignment to specified
+        target sequence.
+
+        Parameters
+        ----------
+        sequence_name : str
+            Target sequence
+
+        Returns
+        -------
+        coverages : pd.DataFrame
+            Dataframe with pairwise coverage
+
+        See Also
+        --------
+        calc_coverage
+        calc_pairwise_coverage_all
+
+        Notes
+        -----
+        Calculates coverage as described for calc_coverage:
+
+        .. math::
+
+            \\text{coverage} = \\frac{\\text{aligned residues}}
+            {\\text{length}(\\text{sequence1})}
+        '''
+        output = {
+                'sequence_1': [],
+                'sequence_2': [],
+                'coverage': [],
+                }
+        for sequence_name_2 in self.sequences:
+            if not sequence_name == sequence_name_2:
+                output['sequence_1'].append(sequence_name)
+                output['sequence_2'].append(sequence_name_2)
+                output['coverage'].append(self.calc_coverage(
+                    sequence_name, sequence_name_2))
+        return pd.DataFrame(output)
+
+    def calc_pairwise_coverage_all(self) -> typing.Type['pd.DataFrame']:
+        '''
+        Calculate coverage between all sequences in the alignment.
+
+        Returns
+        -------
+        coverages : pd.DataFrame
+            Dataframe with pairwise coverage
+
+        See Also
+        --------
+        calc_coverage
+        calc_coverage_target
+
+        Notes
+        -----
+        Calculates coverage as described for calc_coverage:
+
+        .. math::
+
+            \\text{coverage} = \\frac{\\text{aligned residues}}
+            {\\text{length}(\\text{sequence1})}
+        '''
+        output = {
+                'sequence_1': [],
+                'sequence_2': [],
+                'coverage': [],
+                }
+        # iterate over all pairs of sequences
+        for sequence_name_1, sequence_name_2 in itertools.product(
+                self.sequences.keys(), repeat=2):
+            if not sequence_name_1 == sequence_name_2:
+                output['sequence_1'].append(sequence_name_1)
+                output['sequence_2'].append(sequence_name_2)
+                output['coverage'].append(self.calc_coverage(
+                    sequence_name_1, sequence_name_2))
         return pd.DataFrame(output)
 
 
@@ -874,3 +1144,1282 @@ def assemble_complex_aln(*args: typing.Type['Alignment'], names:
         sequence = '/'.join(sequence)
         output_aln.sequences[output_name] = Sequence(output_name, sequence)
     return output_aln
+
+
+class AlignmentGenerator(abc.ABC):
+    '''
+    Parent class for the auto-generation of alignments and template selection
+    based on sequence input
+
+    Parameters
+    ----------
+    sequence : str
+        Target sequence in 1 letter amino acid code
+    '''
+    def __init__(self, sequence: str, target: str = 'target',
+                 template_location: str = './templates'):
+        self.alignment = None
+        self.target_seq = sequence
+        self.target = target
+        self.template_location = os.path.abspath(template_location)
+        # Simple state machine, together with _check_state
+        self.state = {
+            'has_alignment': False,
+            'is_processed': False,
+            }
+
+    @abc.abstractmethod
+    def get_suggestion(self):
+        '''
+        Generate suggestion for templates and alignment
+        '''
+
+    def _check_state(self, has_alignment: bool = None, is_processed: bool =
+                     None) -> None:
+        '''
+        Check state of the AlignmentGenerator object.
+
+        Parameters
+        ----------
+        has_alignment: bool
+            Assesses whether an alignment has already been generated.
+        is_processed: bool
+            Assesses whether, based on the alignment, templates have already
+            been downloaded and processed from the PDB.
+
+        Raises
+        ------
+        RuntimeError
+            Current state does not support requested behaviour.
+
+        Notes
+        -----
+        Some functionality can only be performed with the object being
+        in a certain state.
+        Giving None as an input prevents the check for that particular state to
+        occur.
+        '''
+        def perform_check(required, state):
+            '''
+            Helper function for checking the state
+
+            Returns true if required is None
+            '''
+            if (required is None) or (required is state):
+                return True
+            return False
+
+        if not (perform_check(has_alignment, self.state['has_alignment']) and
+                perform_check(is_processed, self.state['is_processed'])):
+            msg = (
+                f'Current state does not support requested behaviour.\n'
+                f'has_alignment: current: {self.state["has_alignment"]} '
+                f'required: {has_alignment}\n'
+                f'is_processed: current: {self.state["is_processed"]} '
+                f'required: {is_processed}\n'
+                )
+            # add more detail if has_alignment has mismatch
+            if not perform_check(has_alignment, self.state['has_alignment']):
+                if not has_alignment and self.state['has_alignment']:
+                    msg = msg + (
+                        '\nYou have already generated an alignment.'
+                        )
+                if has_alignment and not self.state['has_alignment']:
+                    msg = msg + (
+                        '\nRequested action requires an alignment. Please call'
+                        ' get_suggestion to generate an alignment.'
+                        )
+            # add more detail if is_processed as mismatch
+            if not perform_check(is_processed, self.state['is_processed']):
+                if not is_processed and self.state['is_processed']:
+                    msg = msg + (
+                        'You have already downloaded the template structures '
+                        'from the PDB and updated the alignment.\n'
+                        )
+                if is_processed and not self.state['is_processed']:
+                    msg = msg + (
+                        'Requested action requires the templates to be '
+                        'downloaded and the alignment to be processed. Please '
+                        'call get_pdbs to perform these steps.\n'
+                        )
+            # raise error with assembled details
+            raise RuntimeError(msg)
+
+    def _guess_pdb_format_from_aln(self) -> str:
+        '''
+        Guess which organization layer of PDB is used in alignment.
+
+        Returns
+        -------
+        pdb_format : str
+            Can be one of `entry`, `polymer_entity`, or
+            `polymer_entity_instance`.
+
+        Raises
+        ------
+        ValueError
+            PDB format could not be guessed.
+
+        Notes
+        -----
+        The following organizational layers exist within the RCSB:
+
+        * entry: The full PDB entry (i.e. 3NY5)
+        * polymer_entity: On of the polymer entities under the entry (i.e.
+        3NY5_1)
+        * polymer_entity_instance: One of the instances of a polymer entity
+        under the entry (i.e. 3NY5.A)
+        '''
+        # check state
+        self._check_state(has_alignment=True, is_processed=None)
+        # parse template ids from aln
+        templates = [t for t in self.alignment.sequences.keys() if t !=
+                     self.target]
+        # identify pattern
+        r_entry = re.compile(r'^[A-Za-z0-9]{4}')
+        r_entity = re.compile(r'^[A-Za-z0-9]{4}[\W_][0-9]')
+        r_instance = re.compile(r'^[A-Za-z0-9]{4}[\W_][A-Za-z]')
+        if all((re.fullmatch(r_entry, template) for template in
+                templates)):
+            pdb_format = 'entry'
+        elif all((re.fullmatch(r_entity, template) for template in
+                  templates)):
+            pdb_format = 'polymer_entity'
+        elif all((re.fullmatch(r_instance, template) for template in
+                  templates)):
+            pdb_format = 'polymer_entity_instance'
+        else:
+            raise ValueError(
+                'Unable to guess pdb_format from template names. Please '
+                'make sure all template names in the alignment follow one of'
+                ' the proposed naming schemes.')
+        return pdb_format
+
+    def show_suggestion(self, get_metadata: bool = False
+                        ) -> typing.Type['pd.DataFrame']:
+        '''
+        Shows which templates have been suggested by the AlignmentGenerator, as
+        well as some useful statistics (sequence identity, coverage).
+
+        Parameters
+        ----------
+        get_metadata : bool
+            Retrieve additional metadata (experimental method, resolution,
+            structure title) from the RCSB
+
+        Returns
+        -------
+        suggestion : pd.DataFrame
+            DataFrame with calculated sequence identity and sequence coverage
+            for target
+
+        Raises
+        ------
+        RuntimeError
+            Alignment has not been generated yet
+
+        Notes
+        -----
+        describe coverage, identity and annotation
+        '''  # TODO
+        self._check_state(has_alignment=True, is_processed=None)
+
+        # calculate coverage and identity
+        df_coverage = self.alignment.calc_coverage_target(self.target)
+        df_identity = self.alignment.calc_identity_target(self.target)
+
+        if get_metadata:
+            # Fetch annotation from RCSB
+            templates = list(set(
+                [t[0:4] for t in self.alignment.sequences
+                    if t != self.target]))
+            url = 'https://data.rcsb.org/graphql?'
+
+            # query for structure annotation
+            # Documentation of query API:
+            # https://data.rcsb.org/index.html
+            query = (
+                f'query={{'
+                f' entries(entry_ids: {templates!r}) {{'
+                f'  rcsb_id'
+                f'  struct {{'
+                f'   title'
+                f'  }}'
+                f'  exptl {{'
+                f'   method'
+                f'  }}'
+                f'  rcsb_entry_info {{'
+                f'   resolution_combined'
+                f'  }}'
+                f' }}'
+                f'}}'
+                )
+            # format query
+            query = query.replace("'", '"')
+            # encode URL
+            query = urllib.parse.quote(query, safe='=():,')
+
+            # access query
+            with urllib.request.urlopen(url + query) as response:
+                # check status
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                        f'Unknown URL status: expected 200, got '
+                        f'{response.status}')
+
+            # extract data
+            annot_id = []
+            for r in response_decoded['data']['entries']:
+                annot_id.append([
+                    r['rcsb_id'],
+                    r['exptl'][0]['method'],
+                    r['rcsb_entry_info']['resolution_combined'][0],
+                    r['struct']['title'],
+                    ])
+            df_annotation = pd.DataFrame(annot_id, columns=[
+                'pdbid', 'method', 'resolution', 'title'])
+
+        # combine data frames
+        output = (
+            pd.merge(df_coverage, df_identity, on=('sequence_1', 'sequence_2'))
+            # remove column with sequence_1 and rename sequence_2
+            .drop('sequence_1', axis=1)
+            # sort values
+            .sort_values(by=['identity', 'coverage'], ascending=[False, False])
+            .rename({'sequence_2': 'template'}, axis=1)
+            )
+        if get_metadata:
+            output = (
+                output
+                .assign(pdbid=lambda df: df['template'].map(
+                    lambda template: template[0:4]))
+                )
+            output = (
+                pd.merge(output, df_annotation, on=('pdbid', 'pdbid'))
+                # sort values
+                .sort_values(by=['identity', 'coverage'],
+                             ascending=[False, False])
+                # remove merge column
+                .drop('pdbid', axis=1)
+                )
+
+        return output
+
+    def select_templates(self, templates: typing.Iterable) -> None:
+        '''
+        Select templates from suggested templates by identifier.
+
+        Raises
+        ------
+        RuntimeError
+            Alignment has not been generated yet
+        '''
+        self._check_state(has_alignment=True, is_processed=False)
+        selection = ['target'] + list(templates)
+        self.alignment.select_sequences(selection)
+
+    def get_pdbs(self, pdb_format: str = 'auto', verbose: bool = True) -> None:
+        '''
+        Downloads and processes templates present in alignment.
+
+        Parameters
+        ----------
+        pdb_format : str
+            Format of PDB identifiers in alignment (default auto)
+        verbose : bool
+            Explain what operations are performed
+
+        Raises
+        ------
+        RuntimeError
+            Alignment has not been generated yet
+        ValueError
+            PDB format could not be guessed
+
+        Notes
+        -----
+        pdb_format tells the function how to parse the template identifiers in
+        the alignment:
+
+        * auto: Automatic guess for pdb_format
+        * entry: Sequences are named only be their PDB identifier (i.e. 4G0N)
+        * entity: Sequences are named in the format PDBID_ENTITY (i.e. 4G0N_1)
+        * instance: Sequences are named in the format PDBID_CHAIN (i.e. 4G0N_A)
+        '''
+        # check state
+        self._check_state(has_alignment=True, is_processed=False)
+
+        # Helper functions
+        # verbose behaviour
+        # adapted from https://stackoverflow.com/a/5980173/7912251
+        if verbose:
+            def vprint(*args, **kwargs):
+                for arg in args:
+                    print(arg, **kwargs)
+        else:
+            def vprint(*args):
+                pass
+
+        def get_entities_from_entries(templates, alignment) -> (dict, dict):
+            '''
+            For an alignment with PDB entry identifiers (i.e. 1LFD), create
+            mapping of entry identifiers to the entity identifiers (i.e.
+            1LFD_1) and download entity information.
+            '''
+            # get number of entities for each entry
+            url = 'https://data.rcsb.org/graphql?'
+            query = (
+                f'query={{'
+                f' entries(entry_ids: '
+                f' {templates!r}) {{'
+                f'  rcsb_id'
+                f'  rcsb_entry_info {{'
+                f'   polymer_entity_count_protein'
+                f'  }}'
+                f' }}'
+                f'}}'
+                )
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
+
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                        f'Unknown URL status: expected 200, got '
+                        f'{response.status}')
+
+            entities = list()
+            for r in response_decoded['data']['entries']:
+                entry = r['rcsb_id']
+                entity_count = (
+                    r['rcsb_entry_info']['polymer_entity_count_protein'])
+                for entity_num in range(1, entity_count+1):
+                    entities.append(f'{entry}_{entity_num}')
+
+            # pull sequence information for all entities
+            query = (f'query={{'
+                     f' polymer_entities (entity_ids: {entities!r}) {{'
+                     f'  rcsb_id'
+                     f'  entity_poly {{'
+                     f'   pdbx_seq_one_letter_code_can'
+                     f'   pdbx_strand_id'
+                     f'  }}'
+                     f' }}'
+                     f'}}'
+                     )
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
+
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200, got '
+                            f'{response.status}')
+
+            entities = dict()
+            for r in response_decoded['data']['polymer_entities']:
+                entity = r['rcsb_id']
+                seq = r['entity_poly']['pdbx_seq_one_letter_code_can']
+                chains = r['entity_poly']['pdbx_strand_id'].split(',')
+                entities[entity] = {
+                        'sequence': seq,
+                        'chains': chains}
+
+            # match entries with entities based on entities
+            mapping = dict()
+            for template in alignment.sequences:
+                for entity in entities:
+                    if template != entity[0:4]:
+                        continue
+                    seq_alignment = (
+                        alignment.sequences[template].sequence
+                        .replace('-', ''))
+                    seq_entity = entities[entity]['sequence']
+                    seq_match = re.search(seq_alignment, seq_entity)
+                    if seq_match is not None:
+                        mapping[entity] = [{'entry': template,
+                                            'aln_name': template}]
+
+            # filter entities so that only matched entities remain
+            entities = {
+                entity: seq for entity, seq in entities.items() if entity in
+                mapping.keys()}
+
+            return (mapping, entities)
+
+        def get_entities_from_instances(templates, alignment) -> (dict, dict):
+            '''
+            For a list of templates with PDB polymer instance identifiers (i.e.
+            1LFD_A), create mapping of instance identifiers to the entity
+            identifiers (i.e. 1LFD_1) and download entity information.
+            '''
+            # make sure instances are correctly formatted
+            templates_formatted = {f'{t[0:4]}.{t[5]}': t for t in templates}
+            # pull entity information for all instances
+            url = 'https://data.rcsb.org/graphql?'
+            query = (
+                f'query={{'
+                f' polymer_entity_instances(instance_ids: '
+                f' {list(templates_formatted.keys())!r}) {{'
+                f'  rcsb_id'
+                f'  rcsb_polymer_entity_instance_container_identifiers {{'
+                f'   entity_id'
+                f'  }}'
+                f' }}'
+                f'}}'
+                )
+
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
+
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                        f'Unknown URL status: expected 200, got '
+                        f'{response.status}')
+
+            # parse entity information
+            mapping = dict()
+            for r in response_decoded['data']['polymer_entity_instances']:
+                instance = r['rcsb_id']
+                entity = (
+                    instance[0:4] + '_' +
+                    r['rcsb_polymer_entity_instance_container_identifiers']
+                    ['entity_id'])
+                if entity in mapping.keys():
+                    mapping[entity].append(
+                        {'instance': instance,
+                         'aln_name': templates_formatted[instance]})
+                else:
+                    mapping[entity] = [
+                            {'instance': instance,
+                             'aln_name': templates_formatted[instance]}]
+
+            # pull sequences for entites from RCSB
+            query = (f'query={{'
+                     f' polymer_entities (entity_ids:'
+                     f' {list(mapping.keys())!r}) {{'
+                     f'  rcsb_id'
+                     f'  entity_poly {{'
+                     f'   pdbx_seq_one_letter_code_can'
+                     f'   pdbx_strand_id'
+                     f'  }}'
+                     f' }}'
+                     f'}}'
+                     )
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
+
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200, got '
+                            f'{response.status}')
+
+            entities = dict()
+            for r in response_decoded['data']['polymer_entities']:
+                entity = r['rcsb_id']
+                seq = r['entity_poly']['pdbx_seq_one_letter_code_can']
+                chains = r['entity_poly']['pdbx_strand_id'].split(',')
+                entities[entity] = {
+                        'sequence': seq,
+                        'chains': chains}
+
+            # check that, if multiple instances are assigned a common identity,
+            # their alignment is identical
+            for entity, instances in mapping.items():
+                if len(instances) > 1:
+                    seqs_instances = [
+                        alignment.sequences[instance['aln_name']].sequence for
+                        instance in instances]
+                    if len(set(seqs_instances)) != 1:
+                        raise RuntimeError(
+                            f'Entity: {entity}\n'
+                            f'Found instances of the same PDB entity, but with'
+                            f' different alignments. Since all instances of an'
+                            f' entity share a sequence, this should not '
+                            f'happen!\n'
+                            f'Select one of the instances before running '
+                            f'get_pdbs.')
+
+            return (mapping, entities)
+
+        def get_entities_from_entities(templates, alignment) -> (dict, dict):
+            '''
+            Process templates and alignment to mapping of entities to entries
+            in the alignment and download entity information.
+            '''
+            # make sure entity names are properly formatted
+            mapping = {f'{t[0:4]}_{t[5]}': [{
+                'entity': f'{t[0:4]}_{t[5]}',
+                'aln_name': t}] for t in templates}
+
+            # pull sequences for entites from RCSB
+            url = 'https://data.rcsb.org/graphql?'
+            query = (f'query={{'
+                     f' polymer_entities (entity_ids:'
+                     f' {list(mapping.keys())!r}) {{'
+                     f'  rcsb_id'
+                     f'  entity_poly {{'
+                     f'   pdbx_seq_one_letter_code_can'
+                     f'   pdbx_strand_id'
+                     f'  }}'
+                     f' }}'
+                     f'}}'
+                     )
+            query = query.replace("'", '"')
+            query = urllib.parse.quote(query, safe='=():,')
+
+            with urllib.request.urlopen(url + query) as response:
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200, got '
+                            f'{response.status}')
+
+            entities = dict()
+            for r in response_decoded['data']['polymer_entities']:
+                entity = r['rcsb_id']
+                seq = r['entity_poly']['pdbx_seq_one_letter_code_can']
+                chains = r['entity_poly']['pdbx_strand_id'].split(',')
+                entities[entity] = {
+                        'sequence': seq,
+                        'chains': chains}
+
+            return (mapping, entities)
+
+        def adjust_template_seq(seq_alignment: str,
+                                seq_template: str):
+            '''
+            Adjusts the sequence from the template to the sequence present in
+            the alignment
+
+            Check match
+            Pad right and left with missing residues
+            '''
+            # check if template sequence is in alignment sequence
+            seq_match = re.search(seq_template.replace('X', r'\w'),
+                                  seq_alignment)
+
+            if seq_match is None:
+                raise RuntimeError(
+                    'Could not match template sequence with aligned sequence.')
+
+            # pad template sequence if necessary
+            seq_template_padded = (
+                    seq_template
+                    .rjust(len(seq_template) + seq_match.start(), 'X')
+                    .ljust(len(seq_alignment), 'X'))
+
+            return seq_template_padded
+
+        def add_seq_to_aln(aln, seq_name, old_sequence, new_sequence):
+            '''
+            Adds sequence to alignment, then performs sequence replacement and
+            annotates the sequence.
+            '''
+            annotations = {
+                'seq_type': 'structure',
+                'pdb_code': seq_name,
+                'begin_res': '1',
+                'begin_chain': 'A',
+                }
+            aln.sequences.update({
+                seq_name: Sequence(seq_name, old_sequence, **annotations)})
+            aln.replace_sequence(seq_name, new_sequence)
+
+            return aln
+
+        # list of 3 letter amino acid code
+        amino_acids = ['ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLU', 'GLN', 'GLY',
+                       'HIS', 'ILE', 'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER',
+                       'THR', 'TRP', 'TYR', 'VAL', 'SEC']
+
+        # check pdb_format
+        templates = [template for template in self.alignment.sequences.keys()
+                     if template != self.target]
+        if pdb_format == 'auto':
+            vprint('Guessing template naming format...')
+            pdb_format = self._guess_pdb_format_from_aln()
+            vprint(f'Template naming format guessed: {pdb_format}!\n')
+        elif pdb_format not in ['entry', 'polymer_entity',
+                                'polymer_entity_instance']:
+            raise ValueError(
+                f'Invalid value to pdb_format: {pdb_format}\nHas to be one of '
+                f'"auto", "entry", "polymer_entity", '
+                f'"polymer_entity_instance".')
+
+        # Initialize template dir
+        vprint('Checking template dir...')
+        if not os.path.exists(self.template_location):
+            vprint('Template dir not found...')
+            os.makedirs(self.template_location, exist_ok=True)
+            vprint(f'New template dir created at\n'
+                   f'"{self.template_location}"!\n')
+        else:
+            vprint('Template dir found!\n')
+
+        # depending on the format, extract mapping of templates to pdb entities
+        # as well as sequences and chains for these entities from PDB
+        vprint('Processing templates:\n')
+        if pdb_format == 'entry':
+            mapping, entities = get_entities_from_entries(
+                    templates, self.alignment)
+        elif pdb_format == 'polymer_entity':
+            mapping, entities = get_entities_from_entities(
+                    templates, self.alignment)
+        elif pdb_format == 'polymer_entity_instance':
+            mapping, entities = get_entities_from_instances(
+                    templates, self.alignment)
+
+        # initialize changed alignment
+        new_aln = Alignment(None)
+        new_aln.sequences = {
+                self.target: self.alignment.sequences[self.target]}
+
+        # compare sequences from the alignment and the entities to find out if
+        # template structures need to be clipped
+        # (i.e. hhblits does not necessary include the full template sequence
+        # in its alignment, so to properly process it, we need to find out
+        # which parts are included and remove the rest from the template)
+
+        for entity in mapping:
+            # get sequences
+            seq_alignment = (
+                self.alignment.sequences[mapping[entity][0]['aln_name']]
+                .sequence.replace('-', ''))
+            seq_entity = entities[entity]['sequence']
+            # find first set of indexes: where to clip the alignment
+            index_first_res_clipped, index_last_res_clipped = re.search(
+                    seq_alignment, seq_entity).span()
+            # download template
+            vprint(f'{entity[0:4]} downloading from PDB...')
+            pdb = pdb_io.download_pdb(entity[0:4])
+            vprint(f'{entity[0:4]} downloaded!')
+            # iterate over chains
+            for chain in entities[entity]['chains']:
+                pdb_chain = pdb.transform_extract_chain(chain)
+                vprint(f'{entity[0:4]}_{chain}: Chain extracted!')
+                seq_template = pdb_chain.get_sequence(ignore_missing=False)
+                try:
+                    seq_template_padded = adjust_template_seq(
+                            seq_entity, seq_template)
+                except RuntimeError as exc:
+                    msg = f'{entity[0:4]}_{chain}'
+                    raise RuntimeError(msg) from exc
+                # get first and last residue from template pdb
+                pdb_chain_onlyprotein = pdb_chain.transform_filter_res_name(
+                        amino_acids, mode='in')
+                template_res_span = (
+                    int(pdb_chain_onlyprotein.lines[0][22:26]),
+                    int(pdb_chain_onlyprotein.lines[-1][22:26]))
+                # get index of first and last residue in alignment
+                for i, res in enumerate(seq_template_padded):
+                    if res != 'X':
+                        index_first_res_template = i
+                        break
+                for i, res in enumerate(seq_template_padded[::-1]):
+                    if res != 'X':
+                        index_last_res_template = len(seq_template_padded) - i
+                        break
+                # calculate residue range to clip from indices
+                lower = (template_res_span[0] + index_first_res_clipped -
+                         index_first_res_template)
+                upper = (template_res_span[1] + index_last_res_clipped -
+                         index_last_res_template)
+                # adjust template structure
+                pdb_chain = pdb_chain.transform_filter_res_seq(lower, upper)
+                # update alignment
+                new_aln = add_seq_to_aln(
+                    new_aln, f'{entity[0:4]}_{chain}',
+                    (self.alignment.sequences[mapping[entity][0]['aln_name']]
+                     .sequence),
+                    (seq_template_padded
+                     [index_first_res_clipped:index_last_res_clipped]))
+                vprint(f'{entity[0:4]}_{chain}: Alignment updated!')
+
+                # process template
+                pdb_chain = (
+                    pdb_chain
+                    .transform_filter_res_name(['HOH'])
+                    .transform_renumber_residues(starting_res=1)
+                    .transform_change_chain_id(new_chain_id='A'))
+                pdb_chain.write_pdb(os.path.join(
+                    self.template_location, f'{entity[0:4]}_{chain}.pdb'))
+                vprint(f'{entity[0:4]}_{chain}: PDB processed!')
+
+        # update alignment
+        self.alignment = new_aln
+        # update state
+        self.state['is_processed'] = True
+        vprint(f'\nFinishing... All templates successfully\ndownloaded and '
+               f'processed!\nTemplates can be found in\n'
+               f'"{self.template_location}".')
+
+    def initialize_task(self) -> Task:
+        '''
+        Initialize a homelette Task object for model generation and evaluation.
+
+        Returns
+        -------
+        Task
+
+        Raises
+        ------
+        RuntimeError
+            Alignment has not been generated or templates have not been
+            downloaded and processed.
+        '''
+        # check state
+        self._check_state(has_alignment=True, is_processed=True)
+        return Task(
+                task_name=f'models_{self.target}',
+                target=self.target,
+                alignment=self.alignment)
+
+
+# TODO remove after testing
+class TestAlignmentGenerator(AlignmentGenerator):
+    '''
+    TEST ONLY
+    '''
+    def get_suggestion(self):
+        # check state
+        self._check_state(has_alignment=False, is_processed=False)
+        # For testing purpose, just retrieve sequence alignment from
+        # examples/data/single/aln_2.fasta_aln
+        self.alignment = Alignment('/home/junkpp/work/programs/homelette/'
+                                   'test_alngen.fasta_aln')
+        self.alignment.rename_sequence('ARAF', 'target')
+        self.target_seq = self.alignment.sequences['target'].sequence
+
+        # update state
+        self.state['has_alignment'] = True
+
+
+class AlignmentGenerator_pdb(AlignmentGenerator):
+    '''
+    Auto-generation of alignments based on a pdbblast search for a target
+    sequence
+
+    Parameters
+    ----------
+    sequence : str
+        Target sequence
+    '''
+    def get_suggestion(self, seq_id_cutoff: float = 0.5, min_length: int = 30,
+                       max_results: int = 50, verbose=True) -> None:
+        '''
+        '''  # TODO
+        # check state
+        self._check_state(has_alignment=False, is_processed=False)
+
+        # Helper functions
+        # verbose behaviour
+        # adapted from https://stackoverflow.com/a/5980173/7912251
+        if verbose:
+            def vprint(*args, **kwargs):
+                for arg in args:
+                    print(arg, **kwargs)
+        else:
+            def vprint(*args):
+                pass
+
+        def query_pdb(sequence: str, seq_id_cutoff: float = 0.5,
+                      min_length: int = 30, max_results: int = 50) -> list:
+            '''
+            Queries sequence with sequence identity cutoff against the PDB data
+            base.
+
+            Parameters
+            ----------
+            sequence : str
+                Sequence as string
+            seq_id_cutoff : float
+                Sequence identity cutoff, between 0 and 1 (default 0.5)
+            min_length : int
+                Minimal length for potential templates (default 30)
+            max_results : int
+                Maximum number of results to return (default 50)
+
+            Returns
+            -------
+            templates : list
+            '''
+            # assembly query
+            url = 'https://search.rcsb.org/rcsbsearch/v1/query?json='
+            # TODO consider exp. method? maybe xray_only?
+            # documentation for query structures can be found at
+            # https://search.rcsb.org/index.html
+            query = f'''
+            {{
+              "query": {{
+                "type": "group",
+                "logical_operator": "and",
+                "nodes": [
+                  {{
+                    "type": "terminal",
+                    "service": "sequence",
+                    "parameters": {{
+                      "evalue_cutoff": 1,
+                      "identity_cutoff": {seq_id_cutoff},
+                      "target": "pdb_protein_sequence",
+                      "value": "{sequence}"
+                    }}
+                  }},
+                  {{
+                    "type": "terminal",
+                    "service": "text",
+                    "parameters": {{
+                      "attribute": "exptl.method",
+                      "operator": "exact_match",
+                      "negation": false,
+                      "value": "X-RAY DIFFRACTION"
+                    }}
+                  }},
+                  {{
+                    "type": "terminal",
+                    "service": "text",
+                    "parameters": {{
+                      "attribute": "entity_poly.rcsb_sample_sequence_length",
+                      "operator": "greater_or_equal",
+                      "negation": false,
+                      "value": {min_length}
+                    }}
+                }}
+                ]
+              }},
+              "request_options": {{
+                "pager": {{
+                  "start": 0,
+                  "rows": {max_results}
+                }},
+                "scoring_strategy": "sequence"
+              }},
+              "return_type": "polymer_entity"
+            }}
+            '''
+            # format query
+            # remove whitespaces
+            query = re.sub(r'\s\s+', '', query)
+            # encode URL
+            query = urllib.parse.quote_plus(query)
+
+            # access query
+            with urllib.request.urlopen(url + query) as response:
+                # check status
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                elif response.status == 204:
+                    return []
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200 or 204, got '
+                            f'{response.status}')
+
+            # extract templates from response
+            templates = list()
+            for hit in response_decoded['result_set']:
+                templates.append(hit['identifier'])
+
+            return templates
+
+        def generate_alignment(templates):
+            '''
+            Generate alignment based on list of PDB entities.
+            '''
+            vprint('Retrieving sequences...')
+            # download fastas for entities
+            url = 'https://data.rcsb.org/graphql?'
+            query = (f'query={{'
+                     f' polymer_entities (entity_ids: {templates!r}) {{'
+                     f'  rcsb_id'
+                     f'  entity_poly {{'
+                     f'   pdbx_seq_one_letter_code_can'
+                     f'  }}'
+                     f' }}'
+                     f'}}'
+                     )
+            # format query
+            query = query.replace("'", '"')
+            # encode URL
+            query = urllib.parse.quote(query, safe='=():,')
+
+            # access query
+            with urllib.request.urlopen(url + query) as response:
+                # check status
+                if response.status == 200:
+                    response_decoded = json.loads(response.read().decode(
+                        'utf-8'))
+                else:
+                    raise urllib.error.URLError(
+                            f'Unknown URL status: expected 200, got '
+                            f'{response.status}')
+
+            # parse response to file
+            fasta_file_name = os.path.realpath(
+                    f'.sequences_{self.target}.fa')
+            with open(fasta_file_name, 'w') as file_handle:
+                file_handle.write(f'>{self.target}\n')
+                file_handle.write(f'{self.target_seq}\n')
+                for r in response_decoded['data']['polymer_entities']:
+                    template = r['rcsb_id']
+                    sequence = r['entity_poly']['pdbx_seq_one_letter_code_can']
+                    file_handle.write(f'>{template}\n')
+                    file_handle.write(f'{sequence}\n')
+            vprint('Sequences succefully retrieved!\n')
+
+            # perform alignment with clustalo
+            vprint('Generating alignment...')
+            aln_file_name = os.path.realpath(
+                    f'aln_{self.target}.fasta_aln')
+            command = [
+                'clustalo', '-i', fasta_file_name, '-o', aln_file_name,
+                '--force']
+            subprocess.run(command, stdout=None, check=True, shell=False)
+
+            aln = Alignment(aln_file_name)
+            # remove files
+            for file_name in [fasta_file_name, aln_file_name]:
+                if os.path.exists(file_name):
+                    os.remove(file_name)
+
+            return aln
+
+        # send query
+        vprint('Querying PDB...')
+        templates = query_pdb(self.target_seq, seq_id_cutoff, min_length,
+                              max_results)
+        if len(templates) == 0:
+            print(f'Query found no potential templates with current '
+                  f'parameters.\nseq_id_cutoff:\t{seq_id_cutoff}\n'
+                  f'min_length:\t{min_length}')
+            return None
+        vprint(f'Query successful, {len(templates)} found!\n')
+        # generate alignment
+        self.alignment = generate_alignment(templates)
+        vprint('Alignment generated!\n')
+        # update state
+        self.state['has_alignment'] = True
+        # call show_suggestion
+        vprint('Query successful.\nThe following sequences have been found')
+        vprint(self.show_suggestion())
+
+
+# NOTES
+# github https://github.com/soedinglab/hh-suite
+# databases http://wwwuser.gwdg.de/~compbiol/data/hhsuite/databases/hhsuite_dbs
+class AlignmentGenerator_hhblits(AlignmentGenerator):
+    '''
+    '''  # TODO
+    def get_suggestion(
+            self,
+            # database_dir: str = './databases/',
+            database_dir='/home/philipp/Downloads/hhsuite_dbs/',
+            use_uniref: bool = False, evalue_cutoff: float = 0.001,
+            iterations: int = 2, n_threads: int = 2, neffmax: float = 10.0,
+            verbose: bool = True) -> None:
+        '''
+        Use hhblits to identify template structures and create a multiple
+        sequence alignment.
+
+        Parameters
+        ----------
+        database_dir : str
+            The directory where the pdb70 (and the UniRef30) database are
+            stored (default ./databases/).
+        use_uniref : bool
+            Use UniRef30 to create a MSA before querying the pdb70 database
+            (default False). This leads to better results, however it takes
+            longer and requires the UniRef30 database on your system.
+        evalue_cutoff : float
+            E-value cutoff for inclusion in result alignment (default 0.001)
+        iterations : int
+            Number of iterations when querying the pdb70 database.
+        n_threads : int
+            Number of threads when querying the pdb70 (or UniRef30) database
+            (default 2).
+        neffmax : float
+            The neffmax value used when querying the pdb70 database
+            (default 10.0).
+        verbose : bool
+            Explain which operations are performed (default False).
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            Alignment has already been generated.
+
+        Notes
+        -----
+        Details about hhblits TODO
+
+        For more information on neffmax, please check the hhblits
+        documentation.
+
+        If UniRef30 is used to generate a prealignment, then hhblits will be
+        called for one iteration with standard parameters.
+
+        Details about the database names... TODO
+        '''  # TODO (do I need Returns if None is returned?, check for other
+        # docstrings as well)
+        # check state
+        self._check_state(has_alignment=False, is_processed=False)
+
+        # init verbose
+        if verbose:
+            def vprint(*args, **kwargs):
+                for arg in args:
+                    print(arg, **kwargs)
+        else:
+            def vprint(*args):
+                pass
+
+        # Helper functions and classes for parsing HHR files
+        class Assembler():
+            '''
+            Helper class for assembling a MSA-like data structure from multiple
+            pairwise alignments.
+
+            Performs assembly based on multiple buffers and a master sequence.
+
+            All pairwise columns between query (master) and templates (slaves)
+            are conserved.
+            '''
+            def __init__(self, master_seq, master_name, aln_buffers):
+                self.master_seq = master_seq
+                self.master_name = master_name
+                self.aln_buffers = aln_buffers
+
+                self.index = 0
+
+                # initialize data structure
+                self.alignment = {master_name: list()}
+                for buffer in self.aln_buffers:
+                    template_name = buffer.slave_name
+                    self.alignment[template_name] = list()
+
+                # initialize indexes in buffers
+                for buffer in self.aln_buffers:
+                    buffer_seq = buffer.master_seq.replace('-', '')
+                    buffer.set_index(re.search(buffer_seq, master_seq).start())
+
+            def next_col(self):
+                # select buffers which are in index
+                selected_buffers = [
+                    buffer for buffer in self.aln_buffers if (
+                        self.index >= buffer.master_index)
+                    and not buffer.is_empty()]
+
+                # get next positions
+                next_position = self.master_seq[self.index]
+                next_positions_buffers = [
+                    buffer.present_next_master() for buffer in
+                    selected_buffers]
+
+                # if all agree, insert
+                if all([next_position_buffer == next_position for
+                        next_position_buffer in next_positions_buffers]):
+                    processed = [self.master_name]
+                    # insert position in master
+                    self.alignment[self.master_name].append(next_position)
+                    # insert position in templates
+                    for buffer in selected_buffers:
+                        template_name = buffer.slave_name
+                        self.alignment[template_name].append(buffer.pop_next())
+                        processed.append(template_name)
+                    # insert gap everywhere else
+                    non_processed = [name for name in self.alignment if name
+                                     not in processed]
+                    for name in non_processed:
+                        self.alignment[name].append('-')
+                    # increment index
+                    self.index += 1
+
+                # if not, get non agreers and pop them
+                elif len(selected_buffers) > 0:
+                    selected_buffers = [
+                        buffer for buffer in selected_buffers
+                        if buffer.present_next_master() != next_position]
+                    processed = list()
+                    # insert in selected
+                    for buffer in selected_buffers:
+                        template_name = buffer.slave_name
+                        self.alignment[template_name].append(buffer.pop_next())
+                        processed.append(template_name)
+                    # insert gap everywhere else
+                    non_processed = [name for name in self.alignment if name
+                                     not in processed]
+                    for name in non_processed:
+                        self.alignment[name].append('-')
+
+                # if all buffers are finished, but there is still query
+                # sequence to process
+                else:
+                    self.alignment[self.master_name].append(next_position)
+                    self.index += 1
+                    non_processed = [name for name in self.alignment
+                                     if name != self.master_name]
+                    for name in non_processed:
+                        self.alignment[name].append('-')
+
+            def construct_aln(self):
+                while not (
+                        all([buffer.is_empty() for buffer in self.aln_buffers])
+                        and self.index + 1 >= len(self.master_seq)):
+                    self.next_col()
+
+                out = Alignment(None)
+                out.sequences = {name: Sequence(name, ''.join(sequence))
+                                 for name, sequence in self.alignment.items()}
+                out.remove_redundant_gaps()
+                return out
+
+        class AlnBuffer():
+            '''
+            Helper class for assembling MSA-like objects from multiple pairwise
+            sequence alignments.
+
+            Flexible data structure for removing elements from the first
+            position of a list.
+            '''
+            def __init__(self, master_name, slave_name, alignment):
+                self.master_name = master_name
+                self.slave_name = slave_name
+
+                self.master_seq = alignment.sequences[master_name].sequence
+                self.slave_seq = alignment.sequences[slave_name].sequence
+
+                # index at which to start considering this sequence
+                self.master_index = 0
+
+            def present_next_master(self):
+                return self.master_seq[0]
+
+            def pop_next(self):
+                next_slave = self.slave_seq[0]
+
+                self.master_seq = self.master_seq[1:]
+                self.slave_seq = self.slave_seq[1:]
+
+                return next_slave
+
+            def is_empty(self):
+                return len(self.master_seq) == 0
+
+            def set_index(self, master_index):
+                self.master_index = master_index
+
+        def parse_hhr(hhr_file, evalue_cutoff=0.001):
+            '''
+            Extract information from HHR file into a list of AlnBuffer Objects.
+            '''
+            target = self.target
+
+            with open(hhr_file, 'r') as file_handler:
+                content = file_handler.read()
+
+            buffers = list()
+            for block in content.split('\n>')[1:]:
+                evalue = float(re.search(r'(?<=E-value=)\S+', block).group())
+
+                if evalue < evalue_cutoff:
+                    template_name = re.search(r'\w+', block).group()
+                    query_seq = ''.join([
+                        re.split(r'\s+', line)[-1] for line in
+                        re.findall(fr'Q\s+{target}\s+\d+\s+[\w-]+', block)])
+                    template_seq = ''.join([
+                        re.split(r'\s+', line)[-1] for line in
+                        re.findall(fr'T\s+{template_name}\s+\d+\s+[\w-]+',
+                                   block)])
+
+                    aln = Alignment(None)
+                    aln.sequences = {
+                        target: Sequence(target, query_seq),
+                        template_name: Sequence(template_name, template_seq)
+                    }
+
+                    buffers.append(AlnBuffer(target, template_name, aln))
+
+            if verbose:
+                n_hits = len(content.split('\n>')[1:])
+                vprint(
+                    f'Identified {n_hits} potential templates.\n'
+                    f'Applying E-value cutoff of {evalue_cutoff}...\n'
+                    f'{len(buffers)} potential templates remaining\n')
+
+            return buffers
+
+        # create query file
+        query_file = os.path.realpath(f'{self.target}.fa')
+        with open(query_file, 'w') as file_handler:
+            file_handler.write(f'>{self.target}\n')
+            file_handler.write(f'{self.target_seq}')
+
+        # Uniref enrichment
+        if use_uniref:
+            vprint('UniRef prealignment...')
+            vprint('This might take some time...')
+            database_uniref30 = os.path.join(database_dir, 'UniRef30')
+            a3m_file = os.path.realpath(f'{self.target}_query.a3m')
+            command = [
+                'hhblits', '-i', query_file, '-d', database_uniref30, '-oa3m',
+                a3m_file, '-n', '1', '-cpu', str(n_threads), '-v', '1']
+            subprocess.run(command, stdout=None, check=True, shell=False)
+            # replace query file with output alignment
+            shutil.move(a3m_file, query_file)
+            vprint('UniRef prealignment completed!\n')
+
+        # run hhblits
+        database_pdb70 = os.path.join(database_dir, 'pdb70')
+        hhr_file = os.path.realpath(f'{self.target}.hhr')
+
+        vprint('Performing PDB database search...')
+        command = [
+            'hhblits', '-i', query_file, '-d', database_pdb70, '-o', hhr_file,
+            '-n', str(iterations), '-cpu', str(n_threads), '-neffmax',
+            str(neffmax), '-v', '1']
+        subprocess.run(command, stdout=None, check=True, shell=False)
+        vprint('PDB database search completed!')
+
+        # parse pairwise alignments from hhr file
+        vprint('Parse results...')
+        buffers = parse_hhr(hhr_file, evalue_cutoff)
+
+        # assemble multiple alignment from pairwise alignments
+        vprint('Assemble combined alignment...')
+        assembler = Assembler(self.target_seq, self.target, buffers)
+        self.alignment = assembler.construct_aln()
+        vprint('Alignment assembled!')
+
+        # update state
+        self.state['has_alignment'] = True
+
+        # remove temporary files
+        for file_name in [query_file, hhr_file]:
+            if os.path.exists(file_name):
+                os.remove(file_name)
+
+# TODO write function that reads fasta sequence from file
