@@ -2103,19 +2103,16 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
 # NOTES
 # github https://github.com/soedinglab/hh-suite
 # databases http://wwwuser.gwdg.de/~compbiol/data/hhsuite/databases/hhsuite_dbs
-# maybe make hhblits_quick and hhblits_slow and include database query to
-# uniref30 in slow mode
-# or initialize with mode slow
 class AlignmentGenerator_hhblits(AlignmentGenerator):
     '''
-    '''
+    '''  # TODO
     def get_suggestion(
             self,
             # database_dir: str = './databases/',
             database_dir='/home/philipp/Downloads/hhsuite_dbs/',
-            use_uniref: bool = False,
-            iterations: int = 2, n_threads: int = 2, mact: float = 0.35,
-            neffmax: float = 10.0, verbose: bool = True) -> None:
+            use_uniref: bool = False, evalue_cutoff: float = 0.001,
+            iterations: int = 2, n_threads: int = 2, neffmax: float = 10.0,
+            verbose: bool = True) -> None:
         '''
         Use hhblits to identify template structures and create a multiple
         sequence alignment.
@@ -2129,14 +2126,13 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
             Use UniRef30 to create a MSA before querying the pdb70 database
             (default False). This leads to better results, however it takes
             longer and requires the UniRef30 database on your system.
+        evalue_cutoff : float
+            E-value cutoff for inclusion in result alignment (default 0.001)
         iterations : int
             Number of iterations when querying the pdb70 database.
         n_threads : int
             Number of threads when querying the pdb70 (or UniRef30) database
             (default 2).
-        mact : float
-            The mact value used when querying the pdb70 database
-            (default 0.35).
         neffmax : float
             The neffmax value used when querying the pdb70 database
             (default 10.0).
@@ -2156,7 +2152,7 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
         -----
         Details about hhblits TODO
 
-        For more information on mact and neffmax, please check the hhblits
+        For more information on neffmax, please check the hhblits
         documentation.
 
         If UniRef30 is used to generate a prealignment, then hhblits will be
@@ -2177,8 +2173,182 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
             def vprint(*args):
                 pass
 
+        # Helper functions and classes for parsing HHR files
+        class Assembler():
+            '''
+            Helper class for assembling a MSA-like data structure from multiple
+            pairwise alignments.
+
+            Performs assembly based on multiple buffers and a master sequence.
+
+            All pairwise columns between query (master) and templates (slaves)
+            are conserved.
+            '''
+            def __init__(self, master_seq, master_name, aln_buffers):
+                self.master_seq = master_seq
+                self.master_name = master_name
+                self.aln_buffers = aln_buffers
+
+                self.index = 0
+
+                # initialize data structure
+                self.alignment = {master_name: list()}
+                for buffer in self.aln_buffers:
+                    template_name = buffer.slave_name
+                    self.alignment[template_name] = list()
+
+                # initialize indexes in buffers
+                for buffer in self.aln_buffers:
+                    buffer_seq = buffer.master_seq.replace('-', '')
+                    buffer.set_index(re.search(buffer_seq, master_seq).start())
+
+            def next_col(self):
+                # select buffers which are in index
+                selected_buffers = [
+                    buffer for buffer in self.aln_buffers if (
+                        self.index >= buffer.master_index)
+                    and not buffer.is_empty()]
+
+                # get next positions
+                next_position = self.master_seq[self.index]
+                next_positions_buffers = [
+                    buffer.present_next_master() for buffer in
+                    selected_buffers]
+
+                # if all agree, insert
+                if all([next_position_buffer == next_position for
+                        next_position_buffer in next_positions_buffers]):
+                    processed = [self.master_name]
+                    # insert position in master
+                    self.alignment[self.master_name].append(next_position)
+                    # insert position in templates
+                    for buffer in selected_buffers:
+                        template_name = buffer.slave_name
+                        self.alignment[template_name].append(buffer.pop_next())
+                        processed.append(template_name)
+                    # insert gap everywhere else
+                    non_processed = [name for name in self.alignment if name
+                                     not in processed]
+                    for name in non_processed:
+                        self.alignment[name].append('-')
+                    # increment index
+                    self.index += 1
+
+                # if not, get non agreers and pop them
+                elif len(selected_buffers) > 0:
+                    selected_buffers = [
+                        buffer for buffer in selected_buffers
+                        if buffer.present_next_master() != next_position]
+                    processed = list()
+                    # insert in selected
+                    for buffer in selected_buffers:
+                        template_name = buffer.slave_name
+                        self.alignment[template_name].append(buffer.pop_next())
+                        processed.append(template_name)
+                    # insert gap everywhere else
+                    non_processed = [name for name in self.alignment if name
+                                     not in processed]
+                    for name in non_processed:
+                        self.alignment[name].append('-')
+
+                # if all buffers are finished, but there is still query
+                # sequence to process
+                else:
+                    self.alignment[self.master_name].append(next_position)
+                    self.index += 1
+                    non_processed = [name for name in self.alignment
+                                     if name != self.master_name]
+                    for name in non_processed:
+                        self.alignment[name].append('-')
+
+            def construct_aln(self):
+                while not (
+                        all([buffer.is_empty() for buffer in self.aln_buffers])
+                        and self.index + 1 >= len(self.master_seq)):
+                    self.next_col()
+
+                out = Alignment(None)
+                out.sequences = {name: Sequence(name, ''.join(sequence))
+                                 for name, sequence in self.alignment.items()}
+                out.remove_redundant_gaps()
+                return out
+
+        class AlnBuffer():
+            '''
+            Helper class for assembling MSA-like objects from multiple pairwise
+            sequence alignments.
+
+            Flexible data structure for removing elements from the first
+            position of a list.
+            '''
+            def __init__(self, master_name, slave_name, alignment):
+                self.master_name = master_name
+                self.slave_name = slave_name
+
+                self.master_seq = alignment.sequences[master_name].sequence
+                self.slave_seq = alignment.sequences[slave_name].sequence
+
+                # index at which to start considering this sequence
+                self.master_index = 0
+
+            def present_next_master(self):
+                return self.master_seq[0]
+
+            def pop_next(self):
+                next_slave = self.slave_seq[0]
+
+                self.master_seq = self.master_seq[1:]
+                self.slave_seq = self.slave_seq[1:]
+
+                return next_slave
+
+            def is_empty(self):
+                return len(self.master_seq) == 0
+
+            def set_index(self, master_index):
+                self.master_index = master_index
+
+        def parse_hhr(hhr_file, evalue_cutoff=0.001):
+            '''
+            Extract information from HHR file into a list of AlnBuffer Objects.
+            '''
+            target = self.target
+
+            with open(hhr_file, 'r') as file_handler:
+                content = file_handler.read()
+
+            buffers = list()
+            for block in content.split('\n>')[1:]:
+                evalue = float(re.search(r'(?<=E-value=)\S+', block).group())
+
+                if evalue < evalue_cutoff:
+                    template_name = re.search(r'\w+', block).group()
+                    query_seq = ''.join([
+                        re.split(r'\s+', line)[-1] for line in
+                        re.findall(fr'Q\s+{target}\s+\d+\s+[\w-]+', block)])
+                    template_seq = ''.join([
+                        re.split(r'\s+', line)[-1] for line in
+                        re.findall(fr'T\s+{template_name}\s+\d+\s+[\w-]+',
+                                   block)])
+
+                    aln = Alignment(None)
+                    aln.sequences = {
+                        target: Sequence(target, query_seq),
+                        template_name: Sequence(template_name, template_seq)
+                    }
+
+                    buffers.append(AlnBuffer(target, template_name, aln))
+
+            if verbose:
+                n_hits = len(content.split('\n>')[1:])
+                vprint(
+                    f'Identified {n_hits} potential templates.\n'
+                    f'Applying E-value cutoff of {evalue_cutoff}...\n'
+                    f'{len(buffers)} potential templates remaining\n')
+
+            return buffers
+
         # create query file
-        # TODO if mode slow, query file is output from hhblits against uniref30
         query_file = os.path.realpath(f'{self.target}.fa')
         with open(query_file, 'w') as file_handler:
             file_handler.write(f'>{self.target}\n')
@@ -2201,70 +2371,29 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
         # run hhblits
         database_pdb70 = os.path.join(database_dir, 'pdb70')
         hhr_file = os.path.realpath(f'{self.target}.hhr')
-        a3m_file = os.path.realpath(f'{self.target}.a3m')
 
         vprint('Performing PDB database search...')
         command = [
             'hhblits', '-i', query_file, '-d', database_pdb70, '-o', hhr_file,
-            '-oa3m', a3m_file, '-n', str(iterations), '-all', '-cpu',
-            str(n_threads), '-mact', str(mact), '-neffmax', str(neffmax), '-v',
-            '1']
+            '-n', str(iterations), '-cpu', str(n_threads), '-neffmax',
+            str(neffmax), '-v', '1']
         subprocess.run(command, stdout=None, check=True, shell=False)
         vprint('PDB database search completed!')
-        # TODO filtering of alignment by evalue: currently -e 0.001
-        # could be made a feature
-        # TODO WARNING: 	maximum number of 65535 sequences exceeded while
-        # reading 6U4K_A. Skipping all following sequences of this MSA
-        # properly understand it and also ignore it!
-        # can be reproduced by RASSF5 seq together with -all flag
 
-        # run reformat.pl
-        vprint('Import alignment...')
-        fasta_file = os.path.realpath(f'{self.target}.fasta_aln')
-        command = ['reformat.pl', 'a3m', 'fas', a3m_file, fasta_file, '-v0']
-        subprocess.run(command, stdout=None, check=True, shell=False)
-        # TODO it is still printing: ('creating gaps...'), suppress this!
+        # parse pairwise alignments from hhr file
+        vprint('Parse results...')
+        buffers = parse_hhr(hhr_file, evalue_cutoff)
 
-        # filter hits out of full alignment
-        aln = Alignment(fasta_file)  # unfiltered alignment
-        aln_filtered = Alignment(None)  # final alignment
-        aln_filtered.sequences = {self.target: aln.sequences[self.target]}
-        templates = []  # parse from hhr file
-
-        with open(hhr_file, 'r') as file_handler:
-            results = file_handler.read()
-        results = results.split('\n\n')[1]
-        for r in results.splitlines()[1:]:
-            templates.append(re.split(r'\s', r.strip())[1])
-
-        sequences_filtered = {key: None for key in templates}
-
-        for template in templates:
-            r = re.compile(f'^{template}')
-            full_name = list(filter(r.match, aln.sequences.keys()))
-            if len(full_name) == 1:
-                sequences_filtered[template] = aln.sequences[full_name[0]]
-            elif len(full_name) > 1:
-                print(f'Multiple sequences found for template {template}: '
-                      f'{full_name}')
-
-        # filter out templates that did not get assigned a sequence
-        aln_filtered.sequences.update({
-                k: v for k, v in sequences_filtered.items() if v is not None})
-        aln_filtered.remove_redundant_gaps()
-        self.alignment = aln_filtered
-        vprint('Alignment imported!')
+        # assemble multiple alignment from pairwise alignments
+        vprint('Assemble combined alignment...')
+        assembler = Assembler(self.target_seq, self.target, buffers)
+        self.alignment = assembler.construct_aln()
+        vprint('Alignment assembled!')
 
         # update state
         self.state['has_alignment'] = True
 
-        # TODO remove temporary files?
-
-        # TODO
-        # The returned alignments contain not the full template sequences, but
-        # only fragments.
-        # Should I abandon this plan here or should I make an automatic
-        # trimming of the template structure as part of the pull down of the
-        # PDB?
-        # I think I should go for the second one but boy.... why is all of this
-        # so complicated?
+        # remove temporary files
+        for file_name in [query_file, hhr_file]:
+            if os.path.exists(file_name):
+                os.remove(file_name)
