@@ -305,6 +305,25 @@ class PdbObject:
         filtered_lines = [line for line in self.lines if check_line(line)]
         return PdbObject(filtered_lines)
 
+    def transform_filter_res_seq(self, lower: int, upper: int) -> 'PdbObject':
+        '''
+        Filter PDB by residue number.
+
+        Parameters
+        ----------
+        lower : int
+            Lower bound of range to filter with.
+        upper : int
+            Upper bound of range to filter with, inclusive.
+
+        Returns
+        -------
+        PdbObject
+        '''
+        filtered_lines = [line for line in self.lines
+                          if lower <= int(line[22:26]) <= upper]
+        return PdbObject(filtered_lines)
+
     def transform_concat(self, *others: 'PdbObject') -> 'PdbObject':
         '''
         Concat PDB with other PDBs.
