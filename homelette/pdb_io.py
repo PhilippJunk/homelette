@@ -114,7 +114,8 @@ class PdbObject:
         '''
         # parse
         out = []
-        for line in self.lines:
+        for line in [line for line in self.lines if not
+                     line.startswith('TER')]:
             out.append({
                 'record': line[0:6].strip(),
                 'serial': int(line[6:11]),
