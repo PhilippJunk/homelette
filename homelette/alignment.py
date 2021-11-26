@@ -3,7 +3,8 @@
 =======================
 
 The :mod:`homelette.alignment` submodule contains a selection of tools for
-handling sequences and alignments.
+handling sequences and alignments, as well as for the automatic generation of
+sequences from a target sequence.
 
 Tutorials
 ---------
@@ -11,7 +12,9 @@ Tutorials
 Basic handing of alignments with `homelette` is demonstrated in :ref:`Tutorial
 1 </Tutorial1_Basics.ipynb>`. The assembling of alignments for complex
 modelling is discussed in
-:ref:`Tutorial 6 </Tutorial6_ComplexModelling.ipynb>`.
+:ref:`Tutorial 6 </Tutorial6_ComplexModelling.ipynb>`. The automatic generation
+of alignments is shown in :ref:`Tutorial 8
+</Tutorial8_AlignmentGeneration.ipynb>`.
 
 Functions and classes
 ---------------------
@@ -20,13 +23,18 @@ Functions and classes present in `homelette.alignment` are listed below:
 
     :class:`Alignment`
     :class:`Sequence`
+    :class:`AlignmentGenerator`
+    :class:`AlignmentGenerator_pdb`
+    :class:`AlignmentGenerator_hhblits`
     :func:`assemble_complex_aln`
 
 -----
 
-'''
+'''  # TODO include AlignmentGenerator
 
-__all__ = ['Alignment', 'Sequence', 'assemble_complex_aln']
+__all__ = ['Alignment', 'Sequence', 'AlignmentGenerator',
+           'AlignmentGenerator_pdb', 'AlignmentGenerator_hhblits',
+           'assemble_complex_aln']
 
 # Standard library imports
 import abc
@@ -655,8 +663,6 @@ class Alignment():
             for sequence in self.sequences.values():
                 sequence.remove_gaps(positions=intersection_gaps)
 
-    # TODO think about name:
-    # maybe something like 'remove_missing_res'?
     def replace_sequence(self, seq_name: str, new_sequence: str) -> None:
         '''
         Targeted replacement of sequence in alignment.
@@ -681,7 +687,25 @@ class Alignment():
 
         Examples
         --------
-        '''  # TODO examples
+        >>> aln = hm.Alignment(None)
+        >>> aln.sequences = {
+        ...     'seq1': hm.alignment.Sequence('seq1', 'AAAACCCCDDDD'),
+        ...     'seq2': hm.alignment.Sequence('seq2', 'AAAAEEEEDDDD'),
+        ...     'seq3': hm.alignment.Sequence('seq3', 'AAAA----DDDD')
+        ...     }
+        >>> replacement_seq1 = 'AAAAXXXXXDDD'
+        >>> replacement_seq3 = 'AAXXXXDD'
+        >>> aln.replace_sequence('seq1', replacement_seq1)
+        >>> aln.print_clustal()
+        seq1        AAAA-----DDD
+        seq2        AAAAEEEEDDDD
+        seq3        AAAA----DDDD
+        >>> aln.replace_sequence('seq3', replacement_seq3)
+        >>> aln.print_clustal()
+        seq1        AAAA-----DDD
+        seq2        AAAAEEEEDDDD
+        seq3        AA--------DD
+        '''
         # check if sequences fully match
         if re.fullmatch(
                 new_sequence.upper().replace('X', r'\w'),
@@ -2397,3 +2421,5 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
         for file_name in [query_file, hhr_file]:
             if os.path.exists(file_name):
                 os.remove(file_name)
+
+# TODO write function that reads fasta sequence from file
