@@ -2074,7 +2074,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
 
             aln = Alignment(aln_file_name)
             # remove files
-            for file_name in [fasta_file_name]:
+            for file_name in [fasta_file_name, aln_file_name]:
                 if os.path.exists(file_name):
                     os.remove(file_name)
 
