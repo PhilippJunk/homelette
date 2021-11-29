@@ -293,6 +293,18 @@ class PdbObject:
                          for line in self.lines]
         return PdbObject(changed_lines)
 
+    def transform_remove_hetatm(self) -> 'PdbObject':
+        '''
+        Remove all HETATM entries from PDB.
+
+        Returns
+        -------
+        PdbObject
+        '''
+        filtered_lines = [line for line in self.lines if not
+                          line.startswith('HETATM')]
+        return PdbObject(filtered_lines)
+
     def transform_filter_res_name(
             self, selection: typing.Iterable,
             mode: str = 'out') -> 'PdbObject':

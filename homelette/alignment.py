@@ -1408,9 +1408,9 @@ class AlignmentGenerator(abc.ABC):
 
         if get_metadata:
             # Fetch annotation from RCSB
-            templates = list(set(
-                [t[0:4] for t in self.alignment.sequences
-                    if t != self.target]))
+            templates = list(
+                (t[0:4] for t in self.alignment.sequences
+                 if t != self.target))
             url = 'https://data.rcsb.org/graphql?'
 
             # query for structure annotation
@@ -1539,6 +1539,12 @@ class AlignmentGenerator(abc.ABC):
         Please make sure that all templates follow one naming convention, and
         that there are no sequences in the alignment that violate the naming
         convention (except the target sequence).
+
+        During the template processing, all hetatms will be remove from the
+        template, as well as all other chains. All chains will be renamed to
+        "A" and the residue number will be set to 1 on the first residue. The
+        corresponding annotations are automatically made in the alignment
+        object.
         '''
         # check state
         self._check_state(has_alignment=True, is_processed=False)
@@ -1884,6 +1890,7 @@ class AlignmentGenerator(abc.ABC):
         new_aln = Alignment(None)
         new_aln.sequences = {
                 self.target: self.alignment.sequences[self.target]}
+        new_aln.get_sequence(self.target).annotate(seq_type='sequence')
 
         # compare sequences from the alignment and the entities to find out if
         # template structures need to be clipped
@@ -1949,12 +1956,25 @@ class AlignmentGenerator(abc.ABC):
                 # process template
                 pdb_chain = (
                     pdb_chain
-                    .transform_filter_res_name(['HOH'])
+                    .transform_remove_hetatm()
                     .transform_renumber_residues(starting_res=1)
                     .transform_change_chain_id(new_chain_id='A'))
                 pdb_chain.write_pdb(os.path.join(
                     self.template_location, f'{entity[0:4]}_{chain}.pdb'))
                 vprint(f'{entity[0:4]}_{chain}: PDB processed!')
+
+        # check alignment for empty sequences (might happen during processing)
+        for template, sequence in dict(new_aln.sequences).items():
+            sequence = sequence.sequence
+            if sequence == len(sequence) * '-':
+                vprint(f'{template}: Adjusting the sequence to the template '
+                       f'resulted in an empty sequence.\nRemoving sequence '
+                       f'from the alignment.')
+                del new_aln.sequences[template]
+                if os.path.exists(os.path.join(
+                        self.template_location, template + '.pdb')):
+                    os.remove(os.path.join(
+                        self.template_location, template + '.pdb'))
 
         # update alignment
         self.alignment = new_aln
