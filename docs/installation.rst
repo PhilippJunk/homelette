@@ -70,7 +70,7 @@ homelette is, given a query sequence, to automatically search for potential temp
 Clustal Omega
 ^^^^^^^^^^^^^
 
-Clustal Omega is a light and powerful multiple sequence alignment tool. It can be obtained as source code or precompiled from here: `Clustal Omega webpage <http://www.clustal.org/omega/>`_
+Clustal Omega is a light and powerful multiple sequence alignment tool. It can be obtained as source code or precompiled from here: `Clustal Omega webpage <http://www.clustal.org/omega/>`_. Please make sure that after installation, ``clustalo`` is in your path.
 
 HHSuite3
 ^^^^^^^^
