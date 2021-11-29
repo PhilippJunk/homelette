@@ -52,7 +52,7 @@ RUN apt-get update && apt-get install -y git subversion python libgl1-mesa-glx &
 # install clustal omega and hhsuite
 RUN wget -O ${SRC_FOLDER}/clustalo-${CLUSTALOMEGA_VERSION} -nc http://www.clustal.org/omega/clustalo-1.2.4-Ubuntu-x86_64 && \
 	chmod +x ${SRC_FOLDER}/clustalo-${CLUSTALOMEGA_VERSION} && \
-	mv ${SRC_FOLDER}/clustalo-${CLUSTALOMEGA_VERSION} /usr/local/bin/clustalo \
+	mv ${SRC_FOLDER}/clustalo-${CLUSTALOMEGA_VERSION} /usr/local/bin/clustalo && \
 	wget -O ${SRC_FOLDER}/hhsuite.tar.gz https://mmseqs.com/hhsuite/hhsuite-linux-avx2.tar.gz && \
 	cd ${SRC_FOLDER} && \
 	mkdir -p hhsuite && \
