@@ -29,6 +29,8 @@ routines
     Classes for homology model generation
 evaluation
     Classes for homology model evaluation
+pdb_io
+    Interface for handling and modifying PDB files
 extension
     Interface for extending `homelette`
 '''
