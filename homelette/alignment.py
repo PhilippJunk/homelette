@@ -1389,6 +1389,11 @@ class AlignmentGenerator(abc.ABC):
         RuntimeError
             Alignment has not been generated yet
 
+        See Also
+        --------
+        Alignment.calc_identity
+        Alignment.calc_coverage
+
         Notes
         -----
         The standard output lists the templates in the alignment and shows both
@@ -2301,8 +2306,8 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
         # update state
         self.state['has_alignment'] = True
         # call show_suggestion
-        vprint('Query successful.\nThe following sequences have been found')
-        vprint(self.show_suggestion())
+        vprint(f'Query successful.\n{len(self.alignment.sequences.keys())} '
+               f'sequences have been found.')
 
 
 # NOTES
