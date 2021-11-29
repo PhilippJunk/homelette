@@ -13,7 +13,7 @@ URL = 'https://github.com/philippjunk/homelette/'
 EMAIL = 'philipp.junk@ucdconnect.ie'
 AUTHOR = 'Philipp Junk, Christina Kiel'
 REQUIRES_PYTHON = '>=3.6'
-VERSION = '1.2'
+VERSION = '1.3'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
