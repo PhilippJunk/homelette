@@ -28,7 +28,7 @@ Instructions on how to install homology modelling and evaluation dependencies ca
 
 ## Examples
 
-There is a series of seven tutorials available demonstrating the use and extension of our homology modelling interface. Tutorials are available on our [documentation webpage](https://homelette.readthedocs.io/) or as interactive Jupyter Notebooks in our Docker image or in `homelette/examples`.
+There is a series of eight tutorials available demonstrating the use and extension of our homology modelling interface. Tutorials are available on our [documentation webpage](https://homelette.readthedocs.io/) or as interactive Jupyter Notebooks in our Docker image or in `homelette/examples`.
 
 ## License
 
