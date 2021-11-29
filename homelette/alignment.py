@@ -26,6 +26,7 @@ Functions and classes present in `homelette.alignment` are listed below:
     :class:`AlignmentGenerator`
     :class:`AlignmentGenerator_pdb`
     :class:`AlignmentGenerator_hhblits`
+    :class:`AlignmentGenerator_from_aln`
     :func:`assemble_complex_aln`
 
 -----
@@ -34,7 +35,7 @@ Functions and classes present in `homelette.alignment` are listed below:
 
 __all__ = ['Alignment', 'Sequence', 'AlignmentGenerator',
            'AlignmentGenerator_pdb', 'AlignmentGenerator_hhblits',
-           'assemble_complex_aln']
+           'AlignmentGenerator_from_aln', 'assemble_complex_aln']
 
 # Standard library imports
 import abc
@@ -1163,16 +1164,21 @@ class AlignmentGenerator(abc.ABC):
 
     Attributes
     ----------
-    alignment
-    target_seq
-    target
-    template_location
+    alignment : Alignment
+        The alignment.
+    target_seq : str
+        The target sequence.
+    target : str
+        The name of the target sequence.
+    template_location : str
+        Directory where processed templates will be stored.
     state
+        Dictionary describing the state of the AlignmentGenerator object
 
     Returns
     -------
     None
-    '''  # TODO
+    '''
     def __init__(self, sequence: str, target: str = 'target',
                  template_location: str = './templates/') -> None:
         self.alignment = None
@@ -1246,9 +1252,9 @@ class AlignmentGenerator(abc.ABC):
 
         Parameters
         ----------
-        has_alignment: bool
+        has_alignment : bool
             Assesses whether an alignment has already been generated.
-        is_processed: bool
+        is_processedb : bool
             Assesses whether, based on the alignment, templates have already
             been downloaded and processed from the PDB.
 
@@ -1370,7 +1376,7 @@ class AlignmentGenerator(abc.ABC):
         ----------
         get_metadata : bool
             Retrieve additional metadata (experimental method, resolution,
-            structure title) from the RCSB
+            structure title) from the RCSB.
 
         Returns
         -------
@@ -1385,8 +1391,15 @@ class AlignmentGenerator(abc.ABC):
 
         Notes
         -----
-        describe coverage, identity and annotation
-        '''  # TODO
+        The standard output lists the templates in the alignment and shows both
+        coverage and sequence identity to the target sequence. The templates
+        are ordered by sequence identity.
+
+        In addition, the experimental method (Xray, NMR or Electron
+        Microscopy), the resolution (if applicable) and the title of the
+        template structure can be retrieved from the RCSB. Retrieving metadata
+        from the PDB requires a working internet connecction.
+        '''
         self._check_state(has_alignment=True, is_processed=None)
 
         # calculate coverage and identity
@@ -1477,6 +1490,15 @@ class AlignmentGenerator(abc.ABC):
         '''
         Select templates from suggested templates by identifier.
 
+        Parameters
+        ----------
+        templates : iterable
+            The selected templates as an interable.
+
+        Returns
+        -------
+        None
+
         Raises
         ------
         RuntimeError
@@ -1513,6 +1535,10 @@ class AlignmentGenerator(abc.ABC):
         * entry: Sequences are named only be their PDB identifier (i.e. 4G0N)
         * entity: Sequences are named in the format PDBID_ENTITY (i.e. 4G0N_1)
         * instance: Sequences are named in the format PDBID_CHAIN (i.e. 4G0N_A)
+
+        Please make sure that all templates follow one naming convention, and
+        that there are no sequences in the alignment that violate the naming
+        convention (except the target sequence).
         '''
         # check state
         self._check_state(has_alignment=True, is_processed=False)
@@ -1960,39 +1986,103 @@ class AlignmentGenerator(abc.ABC):
                 alignment=self.alignment)
 
 
-# TODO remove after testing
-class TestAlignmentGenerator(AlignmentGenerator):
-    '''
-    TEST ONLY
-    '''
-    def get_suggestion(self):
-        # check state
-        self._check_state(has_alignment=False, is_processed=False)
-        # For testing purpose, just retrieve sequence alignment from
-        # examples/data/single/aln_2.fasta_aln
-        self.alignment = Alignment('/home/junkpp/work/programs/homelette/'
-                                   'test_alngen.fasta_aln')
-        self.alignment.rename_sequence('ARAF', 'target')
-        self.target_seq = self.alignment.sequences['target'].sequence
-
-        # update state
-        self.state['has_alignment'] = True
-
-
 class AlignmentGenerator_pdb(AlignmentGenerator):
     '''
-    Auto-generation of alignments based on a pdbblast search for a target
-    sequence
+    Identification of templates using the RCSB search API, generation of
+    alignment using Clustal Omega and download and processing of template
+    structures.
 
     Parameters
     ----------
     sequence : str
-        Target sequence
+        Target sequence in 1 letter amino acid code.
+    target : str
+        The name of the target sequence (default "target").
+    template_location : str
+        Directory where processed templates will be stored (default
+        "./templates/").
+
+    Attributes
+    ----------
+    alignment : Alignment
+        The alignment.
+    target_seq : str
+        The target sequence.
+    target : str
+        The name of the target sequence.
+    template_location : str
+        Directory where processed templates will be stored.
+    state
+        Dictionary describing the state of the AlignmentGenerator object
+
+    Returns
+    ----------
+    None
+
+    Notes
+    -----
+    The AlignmentGenerator uses the RCSB Search API [1]_ to identify potential
+    template structures given the target sequence using MMseq2 [2]_. The
+    sequences of the potentially downloaded and locally aligned using Clustal
+    Omega [3]_ [4]_.
+
+    References
+    ----------
+    .. [1] Rose, Y., Duarte, J. M., Lowe, R., Segura, J., Bi, C., Bhikadiya,
+       C., Chen, L., Rose, A. S., Bittrich, S., Burley, S. K., & Westbrook, J.
+       D. (2021). RCSB Protein Data Bank: Architectural Advances Towards
+       Integrated Searching and Efficient Access to Macromolecular Structure
+       Data from the PDB Archive. Journal of Molecular Biology, 433(11),
+       166704. https://doi.org/10.1016/J.JMB.2020.11.003
+
+    .. [2] Steinegger, M., & Söding, J. (2017). MMseqs2 enables sensitive
+       protein sequence searching for the analysis of massive data sets.
+       Nature Biotechnology 2017 35:11, 35(11), 1026–1028.
+       https://doi.org/10.1038/nbt.3988
+
+    .. [3] Sievers, F., Wilm, A., Dineen, D., Gibson, T. J., Karplus, K.,
+       Li, W., Lopez, R., McWilliam, H., Remmert, M., Söding, J., Thompson, J.
+       D., & Higgins, D. G. (2011). Fast, scalable generation of high-quality
+       protein multiple sequence alignments using Clustal Omega. Molecular
+       Systems Biology, 7(1), 539. https://doi.org/10.1038/MSB.2011.75
+
+    .. [4] Sievers, F., & Higgins, D. G. (2018). Clustal Omega for making
+       accurate alignments of many protein sequences. Protein Science, 27(1),
+       135–145. https://doi.org/10.1002/PRO.3290
     '''
     def get_suggestion(self, seq_id_cutoff: float = 0.5, min_length: int = 30,
-                       max_results: int = 50, verbose=True) -> None:
+                       max_results: int = 50, xray_only: bool = True,
+                       verbose: bool = True) -> None:
         '''
-        '''  # TODO
+        Identifies potential templates, retrieves their sequences and aligns
+        them locally using Clustal Omega.
+
+        Parameters
+        ----------
+        seq_id_cutoff : float
+            The sequence identity cutoff for the identification of template
+            structures. Templates below this threshold will be ignored (default
+            0.5).
+        min_length : int
+            The minimum length of template sequence to be included in the
+            results (default 30 amino acids).
+        max_results : int
+            The number of results returned (default 50).
+        xray_only : bool
+            Only consider templates structures generated with X-ray
+            crystallography (default True).
+        verbose : bool
+            Explain what is done (default True).
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            Alignment already generated.
+        '''
         # check state
         self._check_state(has_alignment=False, is_processed=False)
 
@@ -2030,9 +2120,24 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             '''
             # assembly query
             url = 'https://search.rcsb.org/rcsbsearch/v1/query?json='
-            # TODO consider exp. method? maybe xray_only?
             # documentation for query structures can be found at
             # https://search.rcsb.org/index.html
+            if xray_only:
+                query_experimentalmethod = '''
+                  {
+                    "type": "terminal",
+                    "service": "text",
+                    "parameters": {
+                      "attribute": "exptl.method",
+                      "operator": "exact_match",
+                      "negation": false,
+                      "value": "X-RAY DIFFRACTION"
+                    }
+                  },
+                '''
+            else:
+                query_experimentalmethod = ''
+
             query = f'''
             {{
               "query": {{
@@ -2049,16 +2154,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                       "value": "{sequence}"
                     }}
                   }},
-                  {{
-                    "type": "terminal",
-                    "service": "text",
-                    "parameters": {{
-                      "attribute": "exptl.method",
-                      "operator": "exact_match",
-                      "negation": false,
-                      "value": "X-RAY DIFFRACTION"
-                    }}
-                  }},
+                  {query_experimentalmethod}
                   {{
                     "type": "terminal",
                     "service": "text",
@@ -2194,17 +2290,64 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
 # databases http://wwwuser.gwdg.de/~compbiol/data/hhsuite/databases/hhsuite_dbs
 class AlignmentGenerator_hhblits(AlignmentGenerator):
     '''
-    '''  # TODO
+    Identification of templates using hhblits to search a local PDB database,
+    generation of alignment by combining pairwise alignments of target and
+    template together.
+
+    Parameters
+    ----------
+    sequence : str
+        Target sequence in 1 letter amino acid code.
+    target : str
+        The name of the target sequence (default "target").
+    template_location : str
+        Directory where processed templates will be stored (default
+        "./templates/").
+
+    Attributes
+    ----------
+    alignment : Alignment
+        The alignment.
+    target_seq : str
+        The target sequence.
+    target : str
+        The name of the target sequence.
+    template_location : str
+        Directory where processed templates will be stored.
+    state
+        Dictionary describing the state of the AlignmentGenerator object.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    HHblits from the HHsuite [5]_ is used to query the databases. The resulting
+    pairwise sequence alignments of template to target are combined using the
+    target sequence as the master sequence. The resulting alignment is
+    therefore, strictly speaking, not a proper multiple sequence alignment.
+    However, all information from the pairwise alignments is preserved, and for
+    homology modelling, the alignments of templates among each others do not
+    have any influence.
+
+    References
+    ----------
+
+    .. [5] Sievers, F., & Higgins, D. G. (2018). Clustal Omega for making
+       accurate alignments of many protein sequences. Protein Science, 27(1),
+       135–145. https://doi.org/10.1002/PRO.3290
+
+    '''
     def get_suggestion(
-            self,
-            # database_dir: str = './databases/',
-            database_dir='/home/philipp/Downloads/hhsuite_dbs/',
+            self, database_dir: str = './databases/',
             use_uniref: bool = False, evalue_cutoff: float = 0.001,
             iterations: int = 2, n_threads: int = 2, neffmax: float = 10.0,
             verbose: bool = True) -> None:
         '''
-        Use hhblits to identify template structures and create a multiple
-        sequence alignment.
+        Use HHblits to identify template structures and create a multiple
+        sequence alignment by combination of pairwise alignments on target
+        sequence.
 
         Parameters
         ----------
@@ -2226,7 +2369,7 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
             The neffmax value used when querying the pdb70 database
             (default 10.0).
         verbose : bool
-            Explain which operations are performed (default False).
+            Explain which operations are performed (default True).
 
         Returns
         -------
@@ -2239,17 +2382,20 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
 
         Notes
         -----
-        Details about hhblits TODO
+        This function expects "hhblits" to be installed and in the path. In
+        addition, the pdb70 database needs to be downloaded and extracted in
+        the database_dir. The files need to be called "pdb70_*" for hhblits to
+        correctly find the database. If UniRef30 is used to create a
+        pre-alignment for better results, the UniRef30 database needs to be
+        downloaded and extracted in the database_dir. The files need to be
+        called "UniRef30_*".
 
         For more information on neffmax, please check the hhblits
         documentation.
 
         If UniRef30 is used to generate a prealignment, then hhblits will be
         called for one iteration with standard parameters.
-
-        Details about the database names... TODO
-        '''  # TODO (do I need Returns if None is returned?, check for other
-        # docstrings as well)
+        '''
         # check state
         self._check_state(has_alignment=False, is_processed=False)
 
