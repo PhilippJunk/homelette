@@ -1509,9 +1509,10 @@ class AlignmentGenerator(abc.ABC):
         RuntimeError
             Alignment has not been generated yet
         '''
-        self._check_state(has_alignment=True, is_processed=False)
+        self._check_state(has_alignment=True, is_processed=None)
         selection = [self.target] + list(templates)
         self.alignment.select_sequences(selection)
+        self.alignment.remove_redundant_gaps()
 
     def get_pdbs(self, pdb_format: str = 'auto', verbose: bool = True) -> None:
         '''
@@ -1989,9 +1990,20 @@ class AlignmentGenerator(abc.ABC):
                f'processed!\nTemplates can be found in\n'
                f'"{self.template_location}".')
 
-    def initialize_task(self) -> Task:
+    def initialize_task(self, task_name: str = None, overwrite: bool = False,
+                        task_class: Task = Task) -> Task:
         '''
         Initialize a homelette Task object for model generation and evaluation.
+
+        Parameters
+        ----------
+        task_name : str
+            The name of the task to initialize. If None, initialize as
+            models_{target}.
+        task_class : Task
+            The class to initialize the Task with. This makes it possible to
+            define custom child classes of Task and construct them from this
+            function (default Task)
 
         Returns
         -------
@@ -2005,8 +2017,10 @@ class AlignmentGenerator(abc.ABC):
         '''
         # check state
         self._check_state(has_alignment=True, is_processed=True)
-        return Task(
-                task_name=f'models_{self.target}',
+        if task_name is None:
+            task_name = f'models_{self.target}'
+        return task_class(
+                task_name=task_name,
                 target=self.target,
                 alignment=self.alignment)
 
