@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Classes for, given a target sequence, automatically searching for 
 potential templates and generating alignments using different methods:
  - Base class: `alignment.AlignmentGenerator`
- - Classes for application: `alignment.AlignmentGenerator_pdb` and `alignment.AlignmentGenerator_hhblits`
+ - Classes for application: `alignment.AlignmentGenerator_pdb`, `alignment.AlignmentGenerator_hhblits`, `alignment.AlignmentGenerator_from_aln`
 - Added Tutorial 8 about automatic generation of alignments.
 - Methods for checking coverage between sequences in alignments:
  - `alignment.Alignment.calc_coverage`
