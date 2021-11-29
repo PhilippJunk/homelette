@@ -30,7 +30,7 @@ Functions and classes present in `homelette.alignment` are listed below:
 
 -----
 
-'''  # TODO include AlignmentGenerator
+'''
 
 __all__ = ['Alignment', 'Sequence', 'AlignmentGenerator',
            'AlignmentGenerator_pdb', 'AlignmentGenerator_hhblits',
@@ -1149,15 +1149,32 @@ def assemble_complex_aln(*args: typing.Type['Alignment'], names:
 class AlignmentGenerator(abc.ABC):
     '''
     Parent class for the auto-generation of alignments and template selection
-    based on sequence input
+    based on sequence input.
 
     Parameters
     ----------
     sequence : str
-        Target sequence in 1 letter amino acid code
-    '''
+        Target sequence in 1 letter amino acid code.
+    target : str
+        The name of the target sequence (default "target").
+    template_location : str
+        Directory where processed templates will be stored (default
+        "./templates/").
+
+    Attributes
+    ----------
+    alignment
+    target_seq
+    target
+    template_location
+    state
+
+    Returns
+    -------
+    None
+    '''  # TODO
     def __init__(self, sequence: str, target: str = 'target',
-                 template_location: str = './templates'):
+                 template_location: str = './templates/') -> None:
         self.alignment = None
         self.target_seq = sequence
         self.target = target
@@ -1173,6 +1190,54 @@ class AlignmentGenerator(abc.ABC):
         '''
         Generate suggestion for templates and alignment
         '''
+
+    @classmethod
+    def from_fasta(cls, fasta_file: str, template_location: str =
+                   './templates/') -> 'AlignmentGenerator':
+        '''
+        Generates an instance of the AlignemntGenerator with the first sequence
+        in the fasta file.
+
+        Parameters
+        ----------
+        fasta_file : str
+            Fasta file from which the first sequence will be read.
+        template_location : str
+            Directory where processed templates will be stored (default
+            "./templates/").
+
+        Returns
+        -------
+        AlignmentGenerator
+
+        Raises
+        ------
+        ValueError
+            Fasta file not properly formatted
+        '''
+        with open(fasta_file, 'r') as file_handler:
+            lines = file_handler.readlines()
+
+        # check if proper file
+        if not any((line.startswith('>') for line in lines)):
+            raise ValueError(
+                'Could not identify any line that marks beginning of a '
+                'sequence block (staring with ">").')
+
+        target_name, target_seq = None, str()
+        for line in lines:
+            if line.startswith('>') and target_name is None:
+                target_name = line.replace('>', '').strip()
+            elif line.startswith('>') and target_name is not None:
+                break
+            else:
+                target_seq += line.replace('-', '').strip().upper()
+
+        if len(target_seq) == 0:
+            raise ValueError(
+                'No sequence found in the first sequence block.')
+
+        return cls(target_seq, target_name, template_location)
 
     def _check_state(self, has_alignment: bool = None, is_processed: bool =
                      None) -> None:
