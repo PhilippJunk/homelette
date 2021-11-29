@@ -7,10 +7,6 @@ manipulating PDB files. There are several constructor function that can read
 PDB files or download them from the internet.
 
 
-Tutorials
----------
-TODO?
-
 Functions and classes
 ---------------------
 
@@ -22,9 +18,7 @@ Functions and classes present in `homelette.pdb_io` are listed below:
 
 -----
 
-'''  # TODO
-# TODO
-# consider writing some function to filter out residues by name (for HOH?)
+'''
 
 __all__ = ['read_pdb', 'download_pdb', 'PdbObject']
 
@@ -52,6 +46,10 @@ class PdbObject:
     ----------
     lines
         The lines of the PDB, filtered for ATOM and HETATM records
+
+    Returns
+    -------
+    None
 
     See Also
     --------
@@ -91,9 +89,12 @@ class PdbObject:
 
         Parameters
         ----------
-
         file_name : str
             The name of the file to write the PDB to.
+
+        Returns
+        -------
+        None
         '''
         with open(file_name, 'w') as file_handler:
             file_handler.writelines(self.lines)
@@ -220,7 +221,7 @@ class PdbObject:
         -------
         list
         '''
-        return sorted(list(set([line[21] for line in self.lines])))
+        return sorted(list({line[21] for line in self.lines}))
 
     def transform_extract_chain(self, chain) -> 'PdbObject':
         '''
