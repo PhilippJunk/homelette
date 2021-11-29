@@ -1483,7 +1483,7 @@ class AlignmentGenerator(abc.ABC):
             Alignment has not been generated yet
         '''
         self._check_state(has_alignment=True, is_processed=False)
-        selection = ['target'] + list(templates)
+        selection = [self.target] + list(templates)
         self.alignment.select_sequences(selection)
 
     def get_pdbs(self, pdb_format: str = 'auto', verbose: bool = True) -> None:
@@ -2487,4 +2487,78 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
             if os.path.exists(file_name):
                 os.remove(file_name)
 
-# TODO write function that reads fasta sequence from file
+
+class AlignmentGenerator_from_aln(AlignmentGenerator):
+    '''
+    Reads an alignment from file into the AlignmentGenerator workflow.
+
+    Parameters
+    ----------
+    alignment_file : str
+        The file to read the alignment from.
+    target : str
+        The name of the target sequence in the alignment.
+    template_location : str
+        Directory where processed templates will be stored (default
+        './templates/').
+    file_format : str, optional
+        The format of the alignment file. Can be 'fasta' or 'pir' (default
+        'fasta').
+
+    Attributes
+    ----------
+    alignment : Alignment
+        The alignment.
+    target_seq : str
+        The target sequence.
+    target : str
+        The name of the target sequence.
+    template_location : str
+        Directory where processed templates will be stored.
+    state : dict
+        Dictionary describing the state of the AlignmentGenerator object.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Useful for making use of the PDB download and processing functions that
+    come with the AlignmentGenerator classes.
+    '''
+    def __init__(self, alignment_file: str, target: str,
+                 template_location: str = './templates/',
+                 file_format: str = 'fasta') -> None:
+        self.alignment = Alignment(alignment_file, file_format)
+        self.target = target
+        self.target_seq = (self.alignment.sequences[target].sequence
+                           .replace('-', ''))
+        self.template_location = template_location
+        self.state = {
+            'has_alignment': True,
+            'is_processed': False,
+            }
+
+    def get_suggestion(self):
+        '''
+        Not implemented, since alignment is read from file on initialization.
+
+        Raises
+        ------
+        NotImplementedError
+        '''
+        msg = ''
+        raise NotImplementedError(msg)
+
+    def from_fasta(self, *args, **kwargs):
+        '''
+        Not implemented, since alignment is read from file on initialization.
+
+
+        Raises
+        ------
+        NotImplementedError
+        '''
+        msg = ''
+        raise NotImplementedError(msg)
