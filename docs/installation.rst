@@ -59,4 +59,25 @@ Specifically, you need to have ``soap_protein_od.hdf5`` available in your modlib
 MolProbity
 ^^^^^^^^^^
 
-Installation instructures for MolProbity are available here: `Github MolProbity <https://github.com/rlabduke/MolProbity>`_. Pleas make sure that after installation, ``phenix.molprobity`` is in your path.
+Installation instructures for MolProbity are available here: `Github MolProbity <https://github.com/rlabduke/MolProbity>`_. Please make sure that after installation, ``phenix.molprobity`` is in your path.
+
+
+Alignment Software
+------------------
+
+homelette is, given a query sequence, to automatically search for potential templates and generate sequence alignments. This requires additional software.
+
+Clustal Omega
+^^^^^^^^^^^^^
+
+Clustal Omega is a light and powerful multiple sequence alignment tool. It can be obtained as source code or precompiled from here: `Clustal Omega webpage <http://www.clustal.org/omega/>`_
+
+HHSuite3
+^^^^^^^^
+
+Installation instructions for HHSuite3 are available here: `Github HHSuite <https://github.com/soedinglab/hh-suite>`_. Please make sure that after installation, ``hhblits`` is in your path.
+
+Databases for HHSuite3
+^^^^^^^^^^^^^^^^^^^^^^
+
+Information on how to obtain the databases is available here: `Github HHSuite <https://github.com/soedinglab/hh-suite>`_. The PDB70 database (~25 GB download, ~65 GB extracted) is required for using HHSuite in homelette, while the UniRef30 database (50~ GB download, ~170 GB extracted) is optional. Please make sure that after downloading and extracting the databases that they are in one folder and are named ``pdb70_*`` and ``UniRef30_*``, respectively.

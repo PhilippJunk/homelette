@@ -13,6 +13,9 @@ Due to the way how MODELLER licenses need to be aquired for each individual user
 .. note::
     Due to the numerous dependencies installed in the Docker image, please be aware that the image is quite big (~10 GB).
 
+.. note::
+    The databases required for using HHSuite3 are not included in the docker container due to their size.
+
 The following sections will explain how to set up and use the docker image.
 
 Setting up the docker image
