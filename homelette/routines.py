@@ -1016,7 +1016,7 @@ class Routine_loopmodel(Routine_modeller):
             '{}.sch'.format(self.target),
             '.tmp*')
 
-    def create_loopmodel_subclass(self) -> modeller.automodel.LoopModel:
+    def create_loopmodel_subclass(self) -> 'modeller.automodel.LoopModel':
         '''
         Create custom loop model class based on self.loop_selections.
 
