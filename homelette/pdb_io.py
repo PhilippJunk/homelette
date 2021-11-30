@@ -27,6 +27,7 @@ import gzip
 import itertools
 import typing
 import urllib.request
+import urllib.error
 import warnings
 
 # Third party imports
@@ -417,6 +418,9 @@ def download_pdb(pdbid: str) -> PdbObject:
     # adapted from https://stackoverflow.com/a/7244263/7912251
     url = 'https://files.rcsb.org/download/' + pdbid + '.pdb.gz'
     with urllib.request.urlopen(url) as response:
-        with gzip.GzipFile(fileobj=response) as uncompressed:
-            pdb = uncompressed.read().decode('utf-8')
+        if response.status == 200:
+            with gzip.GzipFile(fileobj=response) as uncompressed:
+                pdb = uncompressed.read().decode('utf-8')
+        else:
+            raise urllib.error.URLError()
     return PdbObject(pdb.splitlines(keepends=True))

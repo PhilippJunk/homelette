@@ -1915,7 +1915,11 @@ class AlignmentGenerator(abc.ABC):
                     seq_alignment, seq_entity).span()
             # download template
             vprint(f'{entity[0:4]} downloading from PDB...')
-            pdb = pdb_io.download_pdb(entity[0:4])
+            try:
+                pdb = pdb_io.download_pdb(entity[0:4])
+            except urllib.error.URLError:
+                vprint(f'{entity[0:4]} could not be downloaded...\n')
+                continue
             vprint(f'{entity[0:4]} downloaded!')
             # iterate over chains
             for chain in entities[entity]['chains']:
