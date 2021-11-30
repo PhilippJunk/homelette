@@ -1745,19 +1745,41 @@ class AlignmentGenerator(abc.ABC):
 
             # check that, if multiple instances are assigned a common identity,
             # their alignment is identical
-            for entity, instances in mapping.items():
+            for entity, instances in dict(mapping).items():
                 if len(instances) > 1:
                     seqs_instances = [
                         alignment.sequences[instance['aln_name']].sequence for
                         instance in instances]
                     if len(set(seqs_instances)) != 1:
-                        raise RuntimeError(
+                        # if multiple instance with different alignments:
+                        # choose alignment with highest sequence identity
+                        # and discard alternative alignments
+                        temp_aln = Alignment(None)
+                        temp_aln.sequences[self.target] = (
+                                alignment.sequences[self.target])
+                        for instance in instances:
+                            aln_name = instance['aln_name']
+                            sequence = alignment.get_sequence(aln_name)
+                            temp_aln.sequences[aln_name] = sequence
+                        # calculate identities
+                        best_instance = (
+                            temp_aln.calc_identity_target(self.target)
+                            .sort_values('identity', ascending=False)
+                            ['sequence_2'][0]
+                            )
+                        mapping[entity] = [
+                                instance for instance in instances
+                                if instance['aln_name'] == best_instance]
+                        warnings.warn(
                             f'Entity: {entity}\n'
                             f'Found instances of the same PDB entity, but with'
                             f' different alignments. Since all instances of an'
                             f' entity share a sequence, this should not '
-                            f'happen!\n'
-                            f'Select one of the instances before running '
+                            f'happen.\n'
+                            f'Automatically selected instance with highest '
+                            f'sequence identity: {best_instance}\n'
+                            f'To avoid this behaviour, please select '
+                            f'one of the instances before running '
                             f'get_pdbs.')
 
             return (mapping, entities)
@@ -1903,7 +1925,6 @@ class AlignmentGenerator(abc.ABC):
         # (i.e. hhblits does not necessary include the full template sequence
         # in its alignment, so to properly process it, we need to find out
         # which parts are included and remove the rest from the template)
-
         for entity in mapping:
             # get sequences
             seq_alignment = (
@@ -1911,8 +1932,23 @@ class AlignmentGenerator(abc.ABC):
                 .sequence.replace('-', ''))
             seq_entity = entities[entity]['sequence']
             # find first set of indexes: where to clip the alignment
-            index_first_res_clipped, index_last_res_clipped = re.search(
+            try:
+                index_first_res_clipped, index_last_res_clipped = re.search(
                     seq_alignment, seq_entity).span()
+            except AttributeError:
+                # Could not find the sequence from the alignment in in entity
+                # sequence
+                msg = (
+                    f'{mapping[entity][0]["aln_name"]}\n'
+                    f'Could not find sequence from alignment in sequence of '
+                    f'assigned entity. This can happen if the chains were '
+                    f'reassigned in the PDB after the pdb70 database was '
+                    f'created.\n'
+                    f'This sequence will be skipped. In order to use it, '
+                    f' please save your alignment and change the name of the'
+                    f' sequence')
+                warnings.warn(msg)
+                continue
             # download template
             vprint(f'{entity[0:4]} downloading from PDB...')
             try:
@@ -1929,12 +1965,13 @@ class AlignmentGenerator(abc.ABC):
                 try:
                     seq_template_padded = adjust_template_seq(
                             seq_entity, seq_template)
-                except RuntimeError as exc:
+                except RuntimeError:
                     msg = (
                         f'{entity[0:4]}_{chain}: Could not match sequence in '
                         f'alignment to sequence from structure.')
                     # raise RuntimeError(msg) from exc
                     warnings.warn(msg)
+                    continue
                 # get first and last residue from template pdb
                 pdb_chain_onlyprotein = pdb_chain.transform_filter_res_name(
                         amino_acids, mode='in')
@@ -2615,6 +2652,8 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
                         re.split(r'\s+', line)[-1] for line in
                         re.findall(fr'T\s+{template_name}\s+\d+\s+[\w-]+',
                                    block)])
+                    # make sure template name is only 6 characters long!
+                    template_name = template_name[0:6]
 
                     aln = Alignment(None)
                     aln.sequences = {
