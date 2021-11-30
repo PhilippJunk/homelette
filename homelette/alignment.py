@@ -2000,6 +2000,9 @@ class AlignmentGenerator(abc.ABC):
         task_name : str
             The name of the task to initialize. If None, initialize as
             models_{target}.
+        overwrite : bool
+            Whether to overwrite the task directory if a directory of the same
+            name already exists (default False).
         task_class : Task
             The class to initialize the Task with. This makes it possible to
             define custom child classes of Task and construct them from this
@@ -2021,6 +2024,7 @@ class AlignmentGenerator(abc.ABC):
             task_name = f'models_{self.target}'
         return task_class(
                 task_name=task_name,
+                overwrite=overwrite,
                 target=self.target,
                 alignment=self.alignment)
 
