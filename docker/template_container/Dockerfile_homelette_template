@@ -1,6 +1,6 @@
 # Dockerfile for building homelette container
 # use with
-# docker build --no-cache -t philippjunk/homelette_template:latest -t philippjunk/homelette_template:1.2 - < Dockerfile_homelette_template
+# docker build --no-cache -t philippjunk/homelette_template:latest -t philippjunk/homelette_template:1.3 - < Dockerfile_homelette_template
 
 FROM registry.scicore.unibas.ch/schwede/promod3:3.2.0-OST2.2.0-focal
 

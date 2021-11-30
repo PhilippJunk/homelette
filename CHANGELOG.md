@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+
+## [1.3] - 2021-11-30
 ### Added
 - Added loop modelling routines: `routines.Routine_loopmodel_default` and `Routine_loopmodel_slow`, build on the base class `routines.Routine_loopmodel`
-- Classes for, given a target sequence, automatically searching for 
+- Added functionality for, given a target sequence, automatically searching for 
 potential templates and generating alignments using different methods:
  - Base class: `alignment.AlignmentGenerator`
  - Classes for application: `alignment.AlignmentGenerator_pdb`, `alignment.AlignmentGenerator_hhblits`, `alignment.AlignmentGenerator_from_aln`
