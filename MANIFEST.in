@@ -12,5 +12,6 @@ include examples/*.ipynb
 include examples/data/*
 include examples/data/single/*
 include examples/data/complex/*
+include examples/data/alignments/*
 
 include logo/logo.png
