@@ -1926,8 +1926,11 @@ class AlignmentGenerator(abc.ABC):
                     seq_template_padded = adjust_template_seq(
                             seq_entity, seq_template)
                 except RuntimeError as exc:
-                    msg = f'{entity[0:4]}_{chain}'
-                    raise RuntimeError(msg) from exc
+                    msg = (
+                        f'{entity[0:4]}_{chain}: Could not match sequence in '
+                        f'alignment to sequence from structure.')
+                    # raise RuntimeError(msg) from exc
+                    warnings.warn(msg)
                 # get first and last residue from template pdb
                 pdb_chain_onlyprotein = pdb_chain.transform_filter_res_name(
                         amino_acids, mode='in')
