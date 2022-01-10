@@ -14,6 +14,12 @@ For more information, please check out our [online documentation](https://homele
 
 <img src="logo/logo.png" alt="Logo" width="400"/>
 
+## Citing
+
+If you use `homelette` in your research, please cite the following article: 
+
+    Philipp Junk, Christina Kiel, HOMELETTE: a unified interface to homology modelling software, Bioinformatics, 2021;, btab866, https://doi.org/10.1093/bioinformatics/btab866
+
 ## Installation
 
 The simplest way to use homelette is to access it through our prepared docker container. For more information, please check `homelette/docker` or the [documentation](https://homelette.readthedocs.io/).
