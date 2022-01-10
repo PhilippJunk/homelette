@@ -14,10 +14,10 @@ license: MIT
 repository-code: "https://github.com/PhilippJunk/homelette"
 type: software
 version: 1.3
-message: "If you use this software, please cite the article from preferred-citation."
+message: "Please cite this software using the metadata from preferred-citation."
 preferred-citation:
-  title: "HOMELETTE: a unified interface to homology modelling software"
   type: article
+  title: "HOMELETTE: a unified interface to homology modelling software"
   journal: "Bioinformatics"
   year: "2021"
   date-published: "2021-12-25"
@@ -29,5 +29,4 @@ preferred-citation:
       given-names: "Christina"
   url: "https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/btab866/6483082"
   doi: 10.1093/bioinformatics/btab866
-  abstract: "Homology modelling, the technique of generating models of 3D protein structures based on experimental structures from related proteins, has become increasingly popular over the years. An abundance of different tools for model generation and model evaluation is available from various research groups. We present HOMELETTE, an interface which implements a unified programmatic access to these tools. This allows for the assemble of custom pipelines from pre-or self-implemented building blocks. Availability and implementation: HOMELETTE is implemented in Python, compatible with version 3.6 and newer. It is distributed under the MIT license. Documentation and tutorials are available at Read the Docs (https://homelette. readthedocs.io/). The latest version of HOMELETTE is available on PyPI (https://pypi.org/project/homelette/) and GitHub (https://github.com/PhilippJunk/homelette). A full installation of the latest version of HOMELETTE with all dependencies is also available as a Docker container (https://hub.docker.com/r/philippjunk/homelette_template)."
 
