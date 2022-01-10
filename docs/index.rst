@@ -6,6 +6,10 @@ homelette is a Python package offering a unified interface to different software
 .. image:: logo.png
    :width: 400
 
+If you use homelette in your research, please cite the following article:
+
+    Philipp Junk, Christina Kiel, HOMELETTE: a unified interface to homology modelling software, Bioinformatics, 2021;, btab866, https://doi.org/10.1093/bioinformatics/btab866
+
 
 Setting up homelette
 ====================

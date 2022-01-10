@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - Added CITATION.cff
 - Added citation to README.md
+- Added citation to documentation
 
 ## [1.3] - 2021-11-30
 ### Added
