@@ -16,7 +16,7 @@ For more information, please check out our [online documentation](https://homele
 
 ## Citing
 
-If you use `homelette` in your research, please cite the following article: 
+If you use `homelette` in your research, please cite the [following article](https://doi.org/10.1093/bioinformatics/btab866): 
 
     Philipp Junk, Christina Kiel, HOMELETTE: a unified interface to homology modelling software, Bioinformatics, 2021;, btab866, https://doi.org/10.1093/bioinformatics/btab866
 
