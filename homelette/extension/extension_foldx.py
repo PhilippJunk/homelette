@@ -34,7 +34,7 @@ Currently contains the following items:
     :class:`Evaluation_foldx_repairmodels`
     :class:`Evaluation_foldx_interaction`
     :class:`Evaluation_foldx_stability`
-    :class:`Evaluation_fodlx_alascan_buildmodels`
+    :class:`Evaluation_foldx_alascan_buildmodels`
     :class:`Evaluation_foldx_alascan_interaction`
 
 -----
