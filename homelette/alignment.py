@@ -1489,7 +1489,7 @@ class AlignmentGenerator(abc.ABC):
                 .drop('pdbid', axis=1)
                 )
 
-        return output
+        return output.reset_index(drop=True)
 
     def select_templates(self, templates: typing.Iterable) -> None:
         '''
@@ -2206,7 +2206,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
             templates : list
             '''
             # assembly query
-            url = 'https://search.rcsb.org/rcsbsearch/v1/query?json='
+            url = 'https://search.rcsb.org/rcsbsearch/v2/query?json='
             # documentation for query structures can be found at
             # https://search.rcsb.org/index.html
             if xray_only:
@@ -2255,7 +2255,7 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
                 ]
               }},
               "request_options": {{
-                "pager": {{
+                "paginate": {{
                   "start": 0,
                   "rows": {max_results}
                 }},
