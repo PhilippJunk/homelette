@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added citation to README.md
 - Added citation to documentation
 
+### Fixed
+- Updated the RCSB PDB Search API from v1 to v2.
+
 ## [1.3] - 2021-11-30
 ### Added
 - Added loop modelling routines: `routines.Routine_loopmodel_default` and `Routine_loopmodel_slow`, build on the base class `routines.Routine_loopmodel`
