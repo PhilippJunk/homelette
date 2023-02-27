@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - Updated the RCSB PDB Search API from v1 to v2.
+- Fixed issue with long target names in `AlignmentGenerator`s. (#5)
 
 ## [1.3] - 2021-11-30
 ### Added

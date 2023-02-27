@@ -122,7 +122,6 @@ class Sequence():
 
         Notes
         -----
-
         Annotations are important for MODELLER in order to properly process
         alignment in PIR format. The following annotations are supported and
         can be modified.
@@ -165,7 +164,6 @@ class Sequence():
 
         Examples
         --------
-
         Annotation for a target sequence.
 
         >>> target = hm.alignment.Sequence(name = 'target', sequence =
@@ -1169,7 +1167,8 @@ class AlignmentGenerator(abc.ABC):
     target_seq : str
         The target sequence.
     target : str
-        The name of the target sequence.
+        The name of the target sequence. If longer then 14 characters, will be
+        truncated.
     template_location : str
         Directory where processed templates will be stored.
     state
@@ -1183,7 +1182,7 @@ class AlignmentGenerator(abc.ABC):
                  template_location: str = './templates/') -> None:
         self.alignment = None
         self.target_seq = sequence
-        self.target = target
+        self.target = target[:14]  # limit length because of hhblits
         self.template_location = os.path.abspath(template_location)
         # Simple state machine, together with _check_state
         self.state = {
