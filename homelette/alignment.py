@@ -1837,22 +1837,64 @@ class AlignmentGenerator(abc.ABC):
 
             Check match
             Pad right and left with missing residues
+            Fallback: mutate through all combination of gap lengths up to the
+            gap length in the input sequence
             '''
-            # check if template sequence is in alignment sequence
-            seq_match = re.search(seq_template.replace('X', r'\w'),
-                                  seq_alignment)
+            # helper functions:
+            def match_template(seq_template):
+                return re.search(
+                    seq_template.replace('X', r'\w'),
+                    seq_alignment)
 
-            if seq_match is None:
-                raise RuntimeError(
-                    'Could not match template sequence with aligned sequence.')
-
-            # pad template sequence if necessary
-            seq_template_padded = (
+            def pad_template(seq_template, match):
+                return (
                     seq_template
-                    .rjust(len(seq_template) + seq_match.start(), 'X')
-                    .ljust(len(seq_alignment), 'X'))
+                    .rjust(len(seq_template) + match.start(), 'X')
+                    .ljust(len(seq_alignment), 'X')
+                )
 
-            return seq_template_padded
+            # check if template sequence is in alignment sequence
+            seq_match = match_template(seq_template)
+
+            if seq_match is not None:
+                return pad_template(seq_template, seq_match)
+
+            ###################################################################
+            # Fallback:
+            # Get all gaps in the sequence, and try all combination of
+            # gap lengths between 0 and the length in the alignment.
+            # This catches cases where the gap is randomly longer than it
+            # should be, for example due to inconsistency in the residue
+            # numbering.
+
+            # get all possible template sequences
+            def mutate_template_seq(template_seq):
+                '''Generator for all variations of gap lengths.'''
+                # get all gaps
+                gap_properties = list()  # list of (begin, end) tuples for gaps
+                for match in re.finditer(r'X+', template_seq):
+                    gap_properties.append(match.span())
+                for lengths in itertools.product(*[
+                        range(end-begin+1) for begin, end in gap_properties
+                        ]):
+                    out = ''
+                    index = 0
+                    for (begin, end), length in zip(gap_properties, lengths):
+                        out = out + template_seq[index:begin]
+                        out = out + ('X' * length)
+                        index = end
+                    out = out + template_seq[index:]
+                    yield out
+
+            # try them all
+            for mut_seq_template in mutate_template_seq(seq_template):
+                seq_match = match_template(mut_seq_template)
+                if seq_match is not None:
+                    return pad_template(mut_seq_template, seq_match)
+
+            # if mutations have not been successful, raise RuntimeError
+            raise RuntimeError(
+                'Could not match template sequence with aligned sequence.')
 
         def add_seq_to_aln(aln, seq_name, old_sequence, new_sequence):
             '''
