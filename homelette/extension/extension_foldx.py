@@ -413,7 +413,7 @@ class Evaluation_foldx_alascan_buildmodels(Evaluation, _Evaluation_foldx):
                        residues.resSeq.astype('str') + 'A')
         with open(mutant_file, 'w') as f:
             for mut in mutlist:
-                f.write(mut + ';\n')
+                f.write(str(mut) + ';\n')
 
         # BuildModel
         command = [
