@@ -8,11 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added CITATION.cff
 - Added citation to README.md
 - Added citation to documentation
+- Added option to test installation by running tutorials in docker image and locally.
+- Added standard user `homelette` to docker image.
 
 ### Fixed
 - Updated the RCSB PDB Search API from v1 to v2.
 - Fixed issue with long target names in `AlignmentGenerator`s. (#5)
 - Fixed issue with `extension.extension_foldx.Evaluation_foldx_alascan_buildmodels`.
+
+### Changed
+- Adapted working directories in homelette docker image: `/home/homelette/workdir/`, `/home/homelette/templates/`, and `/home/homelette/alignments/`.
 
 ## [1.3] - 2021-11-30
 ### Added
