@@ -42,6 +42,8 @@ fi
 # construct local image
 docker build --no-cache -t homelette:latest -<<EOF
 FROM ${template_image}
+# set user to root for inserting the key
+USER root
 # insert modeller license key
 RUN cat /usr/lib/modeller*/modlib/modeller/config.py | \
 	sed "s/xxx/${modeller_key}/" > tmp_file && \
@@ -49,6 +51,8 @@ RUN cat /usr/lib/modeller*/modlib/modeller/config.py | \
 	echo "Test if license key is accepted:" && \
 	python3 -c "import modeller" 2>&1 /dev/null && \
 	echo "License key successful integrated, local image build."
+# revert user to homelette
+USER homelette
 EOF
 
 

@@ -205,9 +205,13 @@ RUN python3 -m pip install session_info && \
 	python3 -m pip install numexpr --upgrade && \
 	python3 -m pip install scipy --upgrade
 
-# WORKDIR, CMD AND ENTRYPOINT
-#############################
-WORKDIR /home
+# USER, WORKDIR
+###################################
+RUN useradd -ms /bin/bash homelette
+USER homelette
+WORKDIR /home/homelette
 
+# CMD AND ENTRYPOINT
+####################
 ENTRYPOINT []
 CMD ["/bin/bash"]
