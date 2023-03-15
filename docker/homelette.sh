@@ -16,7 +16,7 @@ Access to the local homelette:latest docker image with different modes
 	One of "tutorial", "jupyterlab", "interactive" or "script". If no
 	valid value is given, the scripts exits with an error. The default
 	mode is "jupyterlab".
-	tutorial: Opens the tutorials in an interactive jupyter lab session.
+	tutorials: Opens the tutorials in an interactive jupyter lab session.
 	jupyterlab: Opens an interactive jupyter lab session.
 	interactive: Opens an interactive python interpreter.
 	script: Executes a script given by [-s <script>] in the Python
