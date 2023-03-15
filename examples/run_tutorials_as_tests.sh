@@ -33,9 +33,10 @@ for TUTORIAL_NOTEBOOK in $( ls Tutorial*.ipynb )
 do
 	jupyter nbconvert --to notebook --execute "${TUTORIAL_NOTEBOOK}"
 	# if test fails, cleanup and exit
-	if [ $? -ne 0 ]; then cleanup ; exit $? ;  fi
+	if [ $? -ne 0 ]; echo "Tests unsuccessful." ; then cleanup ; exit $? ;  fi
 done
 
 # cleanup
+echo "Tests run sucessfully."
 cleanup
 exit 0

@@ -38,23 +38,23 @@ Access to the local homelette:latest docker image with different modes
 -w <working_dir>
 	Working Directory
 	Connects the given working directory with the working directory
-	in the homelette container (/home/workdir/). Flag requires an
-	argument. Flag works with modes "jupyterlab", "interactive" and
+	in the homelette container (/home/homelette/workdir/). Flag requires
+	an argument. Flag works with modes "jupyterlab", "interactive" and
 	"script" and is optional.
 
 -t <template_dir>
 	Template Directory
 	Connects the given template directory with a template directory
 	in the working directory of the homelette container
-	(/home/templates/). Flag requires an argument. Flag works with
-	modes "jupyterlab", "interactive" and "script" and is optional.
+	(/home/homelette/templates/). Flag requires an argument. Flag works
+	with modes "jupyterlab", "interactive" and "script" and is optional.
 
 -a <alignment_dir>
 	Alignment Directory
 	Connects the given alignment directory with an alignment
 	directory in the working directory of the homelette container
-	(/home/alignments/). Flag requires an argument. Flag works with
-	modes "jupyterlab", "interactive" and "script" and is optional.
+	(/home/homelette/alignments/). Flag requires an argument. Flag works
+	with modes "jupyterlab", "interactive" and "script" and is optional.
 
 -p <port>
 	Port
@@ -141,9 +141,9 @@ wrapper_jlab () {
 
 # transform directories into volume information for docker
 volumes=
-if [ ! -z "${WORKING_DIR}" ] ; then volumes="${volumes} -v ${WORKING_DIR}:/home/workdir" ; fi
-if [ ! -z "${TEMPLATE_DIR}" ] ; then volumes="${volumes} -v ${TEMPLATE_DIR}:/home/templates" ; fi
-if [ ! -z "${ALIGNMENT_DIR}" ] ; then volumes="${volumes} -v ${ALIGNMENT_DIR}:/home/alignments" ; fi
+if [ ! -z "${WORKING_DIR}" ] ; then volumes="${volumes} -v ${WORKING_DIR}:/home/homelette/workdir" ; fi
+if [ ! -z "${TEMPLATE_DIR}" ] ; then volumes="${volumes} -v ${TEMPLATE_DIR}:/home/homelette/templates" ; fi
+if [ ! -z "${ALIGNMENT_DIR}" ] ; then volumes="${volumes} -v ${ALIGNMENT_DIR}:/home/homelette/alignments" ; fi
 
 # implement different behaviour depending on mode
 if [ "${MODE}" = "tutorials" ] ; then
@@ -206,9 +206,9 @@ elif [ "${MODE}" = "script" ] ; then
 	fi
 	# assemble arguments
 	if [ -z "$volumes" ]; then
-		arguments="-v ${SCRIPT}:/home/script.py --rm $IMAGE"
+		arguments="-v ${SCRIPT}:/home/homelette/workdir/script.py --rm $IMAGE"
 	else
-		arguments="$volumes -v ${SCRIPT}:/home/script.py --rm $IMAGE"
+		arguments="$volumes -v ${SCRIPT}:/home/homelette/workdir/script.py --rm $IMAGE"
 	fi
 	# start container
 	docker run $arguments python3 script.py
@@ -217,14 +217,6 @@ elif [ "${MODE}" = "tests" ]; then
 	# start container
 	arguments="--rm $IMAGE"
 	docker run $arguments /bin/bash -c 'cd $TUTORIALS && ./run_tutorials_as_tests.sh' 
-	# check exit status of container
-	exit_code=$?
-	if [ $exit_code -ne 0 ]; then
-		echo "Tests not successful."
-		exit $exit_code
-	else
-		echo "Tests run successful."
-	fi
 
 else
 	echo -e "Invalid mode: ${MODE}\n\n"
