@@ -3,6 +3,8 @@
 # Script for executing homelette container
 # Philipp Junk, 2021
 
+set -u
+
 # usage 
 usage () { 
 	cat 1>&2 <<EOF
@@ -18,7 +20,9 @@ Access to the local homelette:latest docker image with different modes
 	jupyterlab: Opens an interactive jupyter lab session.
 	interactive: Opens an interactive python interpreter.
 	script: Executes a script given by [-s <script>] in the Python
-	interpreter. -s is required in this mode!.
+	  interpreter. -s is required in this mode!.
+	tests: Runs the tutorial notebooks as tests. Mostly intended for
+	  development purpose.
 
 	In the modes "jupyterlab", "interactive" and "script", it is 
 	possible configure the containers working directory with the flags
@@ -34,9 +38,9 @@ Access to the local homelette:latest docker image with different modes
 -w <working_dir>
 	Working Directory
 	Connects the given working directory with the working directory
-	in the homelette container (/home/). Flag requires an argument. 
-	Flag works with modes "jupyterlab", "interactive" and "script"
-	and is optional.
+	in the homelette container (/home/workdir/). Flag requires an
+	argument. Flag works with modes "jupyterlab", "interactive" and
+	"script" and is optional.
 
 -t <template_dir>
 	Template Directory
@@ -137,7 +141,7 @@ wrapper_jlab () {
 
 # transform directories into volume information for docker
 volumes=
-if [ ! -z "${WORKING_DIR}" ] ; then volumes="${volumes} -v ${WORKING_DIR}:/home/" ; fi
+if [ ! -z "${WORKING_DIR}" ] ; then volumes="${volumes} -v ${WORKING_DIR}:/home/workdir" ; fi
 if [ ! -z "${TEMPLATE_DIR}" ] ; then volumes="${volumes} -v ${TEMPLATE_DIR}:/home/templates" ; fi
 if [ ! -z "${ALIGNMENT_DIR}" ] ; then volumes="${volumes} -v ${ALIGNMENT_DIR}:/home/alignments" ; fi
 
@@ -152,7 +156,7 @@ if [ "${MODE}" = "tutorials" ] ; then
 
 	# check exit status of container
 	exit_code=$?
-	if [ $exit_code -ne 0 ]; then echo "Docker exited wity non-zero exit status. Exit status : $exit_code"; exit $exit_code; fi
+	if [ $exit_code -ne 0 ]; then echo "Docker exited with non-zero exit status. Exit status : $exit_code"; exit $exit_code; fi
 
 	# retrieve jupyter lab token
 	wrapper_jlab
@@ -176,7 +180,7 @@ elif [ "${MODE}" = "jupyterlab" ] ; then
 
 	# check exit status of container
 	exit_code=$?
-	if [ $exit_code -ne 0 ]; then echo "Docker exited wity non-zero exit status. Exit status : $exit_code"; exit $exit_code; fi
+	if [ $exit_code -ne 0 ]; then echo "Docker exited with non-zero exit status. Exit status : $exit_code"; exit $exit_code; fi
 
 	# retrieve jupyter lab token
 	wrapper_jlab
@@ -208,6 +212,19 @@ elif [ "${MODE}" = "script" ] ; then
 	fi
 	# start container
 	docker run $arguments python3 script.py
+
+elif [ "${MODE}" = "tests" ]; then
+	# start container
+	arguments="--rm $IMAGE"
+	docker run $arguments /bin/bash -c 'cd $TUTORIALS && ./run_tutorials_as_tests.sh' 
+	# check exit status of container
+	exit_code=$?
+	if [ $exit_code -ne 0 ]; then
+		echo "Tests not successful."
+		exit $exit_code
+	else
+		echo "Tests run successful."
+	fi
 
 else
 	echo -e "Invalid mode: ${MODE}\n\n"

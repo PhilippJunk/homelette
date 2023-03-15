@@ -40,14 +40,12 @@ else
 fi
 
 # construct local image
-# TODO figure out how to get MODELLER_VERSION from homelette_template
-MODELLER_VERSION="10.1"
 docker build --no-cache -t homelette:latest -<<EOF
 FROM ${template_image}
 # insert modeller license key
-RUN cat /usr/lib/modeller${MODELLER_VERSION}/modlib/modeller/config.py | \
+RUN cat /usr/lib/modeller*/modlib/modeller/config.py | \
 	sed "s/xxx/${modeller_key}/" > tmp_file && \
-	mv tmp_file /usr/lib/modeller${MODELLER_VERSION}/modlib/modeller/config.py && \
+	mv tmp_file /usr/lib/modeller*/modlib/modeller/config.py && \
 	echo "Test if license key is accepted:" && \
 	python3 -c "import modeller" 2>&1 /dev/null && \
 	echo "License key successful integrated, local image build."
