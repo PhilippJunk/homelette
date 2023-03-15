@@ -2608,11 +2608,6 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
         vprint("Alignment generated!\n")
         # update state
         self.state["has_alignment"] = True
-        # call show_suggestion
-        vprint(
-            f"Query successful.\n{len(self.alignment.sequences.keys())} "
-            f"sequences have been found."
-        )
 
 
 # NOTES
