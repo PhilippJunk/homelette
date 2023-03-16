@@ -205,9 +205,10 @@ RUN python3 -m pip install session_info && \
 	python3 -m pip install numexpr --upgrade && \
 	python3 -m pip install scipy --upgrade
 
-# USER, WORKDIR
-###################################
-RUN useradd -ms /bin/bash homelette
+# USER, WORKDIR AND PERMISSIONS
+###############################
+RUN useradd -ms /bin/bash homelette && \
+	chown -R homelette:homelette ${TUTORIALS}
 USER homelette
 WORKDIR /home/homelette
 
