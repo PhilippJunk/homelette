@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+
+## [1.4] - 2023-03-16
 ### Added
 - Added CITATION.cff
 - Added citation to README.md
@@ -13,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - Updated the RCSB PDB Search API from v1 to v2.
+- Implemented fallback method in `AlignmentGenerator.get_pdbs` for increasing chances of correct alignment when structures in PDB have unconventional number schemes. (#4)
 - Fixed issue with long target names in `AlignmentGenerator`s. (#5)
 - Fixed issue with `extension.extension_foldx.Evaluation_foldx_alascan_buildmodels`.
 

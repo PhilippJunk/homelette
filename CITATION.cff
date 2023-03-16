@@ -13,7 +13,7 @@ contact:
 license: MIT
 repository-code: "https://github.com/PhilippJunk/homelette"
 type: software
-version: 1.3
+version: 1.4
 message: "Please cite this software using the metadata from preferred-citation."
 preferred-citation:
   type: article
