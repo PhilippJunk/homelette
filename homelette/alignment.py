@@ -1214,7 +1214,8 @@ class AlignmentGenerator(abc.ABC):
     sequence : str
         Target sequence in 1 letter amino acid code.
     target : str
-        The name of the target sequence (default "target").
+        The name of the target sequence (default "target"). If longer than 14
+        characters, will be truncated.
     template_location : str
         Directory where processed templates will be stored (default
         "./templates/").
@@ -1226,8 +1227,7 @@ class AlignmentGenerator(abc.ABC):
     target_seq : str
         The target sequence.
     target : str
-        The name of the target sequence. If longer then 14 characters, will be
-        truncated.
+        The name of the target sequence.
     template_location : str
         Directory where processed templates will be stored.
     state
@@ -2301,7 +2301,8 @@ class AlignmentGenerator_pdb(AlignmentGenerator):
     sequence : str
         Target sequence in 1 letter amino acid code.
     target : str
-        The name of the target sequence (default "target").
+        The name of the target sequence (default "target"). If longer than 14
+        characters, will be truncated.
     template_location : str
         Directory where processed templates will be stored (default
         "./templates/").
@@ -2624,7 +2625,8 @@ class AlignmentGenerator_hhblits(AlignmentGenerator):
     sequence : str
         Target sequence in 1 letter amino acid code.
     target : str
-        The name of the target sequence (default "target").
+        The name of the target sequence (default "target"). If longer than 14
+        characters, will be truncated.
     template_location : str
         Directory where processed templates will be stored (default
         "./templates/").

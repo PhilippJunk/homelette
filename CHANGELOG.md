@@ -15,12 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - Updated the RCSB PDB Search API from v1 to v2.
-- Implemented fallback method in `AlignmentGenerator.get_pdbs` for increasing chances of correct alignment when structures in PDB have unconventional number schemes. (#4)
-- Fixed issue with long target names in `AlignmentGenerator`s. (#5)
+- Implemented fallback method in `AlignmentGenerator.get_pdbs` for increasing chances of correct alignment when structures in PDB have unconventional number schemes. ([#4][i4])
 - Fixed issue with `extension.extension_foldx.Evaluation_foldx_alascan_buildmodels`.
 
 ### Changed
 - Adapted working directories in homelette docker image: `/home/homelette/workdir/`, `/home/homelette/templates/`, and `/home/homelette/alignments/`.
+- Fixed issue with long target names in `AlignmentGenerator`s. Long names will now automatically truncated to 14 characters on the generation of a `AlignmentGenerator` object. ([#5][i5])
 
 ## [1.3] - 2021-11-30
 ### Added
@@ -86,3 +86,6 @@ to a GitHub tag.
 [1.2]: https://github.com/philippjunk/homelette/compare/1.1...1.2
 [1.1]: https://github.com/philippjunk/homelette/compare/1.0...1.1
 [1.0]: https://github.com/philippjunk/homelette/releases/tag/1.0
+
+[i4]: https://github.com/philippjunk/homelette/issues/4
+[i5]: https://github.com/philippjunk/homelette/issues/5
