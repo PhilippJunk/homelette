@@ -8,7 +8,7 @@ A license key for MODELLER for academic use can be easily aquired [here](https:/
 
 The local, full installation of homelette is based on the `homelette_template:latest` image shared on DockerHub. 
 
-A bash script (`construct_homelette_image.sh`) has been provided. This script pulls the latest version of the `homelette_template` image from DockerHub and then attempts to construct the local homelette image with the given MODELLER license key:
+A bash script (`construct_homelette_image.sh`) has been provided. The scipt can be found in the `docker/` directory in the Github repo and needs to be downloaded. This script pulls the latest version of the `homelette_template` image from DockerHub and then attempts to construct the local homelette image with the given MODELLER license key:
 
 ```bash
 ./construct_homelette_image.sh "YOUR MODELLER KEY HERE"

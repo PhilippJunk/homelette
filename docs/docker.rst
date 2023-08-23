@@ -21,7 +21,7 @@ The following sections will explain how to set up and use the docker image.
 Setting up the docker image
 ---------------------------
 
-A bash script (``construct_homelette_image.sh`` found in ``homelette/docker/``) has been provided which automatically pulls the latest version of the homelette_template image from DockerHub and then attempts to construct the local homelette image with the given MODELLER license key:
+A bash script (``construct_homelette_image.sh`` found in ``homelette/docker/``) has been provided which automatically pulls the latest version of the homelette_template image from DockerHub and then attempts to construct the local homelette image with the given MODELLER license key. After downloading the script from Github, run
 
 .. code-block:: bash
    
