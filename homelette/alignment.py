@@ -787,8 +787,7 @@ class Alignment:
         self, sequence_name_1: str, sequence_name_2: str
     ) -> float:
         """
-        Calculation of sequence identity between two sequences in the
-        alignment.
+        Calculate sequence identity between two sequences in the alignment.
 
         Parameters
         ----------
@@ -821,7 +820,6 @@ class Alignment:
 
         Examples
         --------
-
         Gaps and mismatches are treated equally.
 
         >>> aln = hm.Alignment(None)
